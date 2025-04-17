@@ -90,7 +90,7 @@ void BM_hash(benchmark::State &state) {
         for (int i = 0; i < 1000; ++i){
             ECP2 P2 = randECP2(rng_test);
             ECP2_toOctet(&oc, &P2, false);
-            ocs = concatOctet(&ocs, &oc);
+            ocs = concat_Octet(&ocs, &oc);
         }
         hashZp256(hash, &ocs, q);
     }

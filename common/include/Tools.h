@@ -13,6 +13,7 @@
 #include <iomanip>
 #include <chrono>
 #include <random>
+#include <cassert>
 
 using namespace B384_58;
 using namespace BLS12381;
@@ -128,6 +129,34 @@ mpz_class pow_mpz(const mpz_class& base, const mpz_class& exp, const mpz_class& 
 mpz_class invert_mpz(const mpz_class& a, const mpz_class& m);
 
 /**
+ * Computes the Lagrange interpolation coefficients for a given set of points under a modulus.
+ * @param x Vector of x-coordinates of the interpolation points.
+ * @param y Vector of y-coordinates of the interpolation points.
+ * @param modulus Modulus for computations (all operations are performed modulo `modulus`).
+ * @return Vector of coefficients of the Lagrange interpolating polynomial under the given modulus.
+ *         The coefficients are ordered from the constant term to the highest degree term.
+ */
+vector<mpz_class> getLagrangeCoffs(const vector<mpz_class> &x, const vector<mpz_class> &y, const mpz_class &modulus);
+
+/**
+ * Evaluates a polynomial at a given point under a modulus.
+ * @param poly Vector of polynomial coefficients, ordered from the constant term to the highest degree term.
+ * @param x Point at which to evaluate the polynomial.
+ * @param modulus Modulus for computations (all operations are performed modulo `modulus`).
+ * @return The value of the polynomial at the given point `x`, computed modulo `modulus`.
+ */
+mpz_class computePoly(const vector<mpz_class> &poly, const mpz_class &x, const mpz_class &modulus);
+
+/**
+ * Computes the values of the Lagrange basis polynomials at zero for a given set of x-coordinates under a modulus.
+ * @param x Vector of x-coordinates of the interpolation points.
+ * @param q Modulus for computations (all operations are performed modulo `q`).
+ * @return Vector of values, where each value corresponds to the evaluation of a Lagrange basis polynomial
+ *         at zero. The result is computed modulo `q`.
+ */
+vector<mpz_class> getLagrangeBasis(const vector<mpz_class> &x, const mpz_class &q);
+
+/**
  * Outputs a mpz_t integer in hexadecimal format, including a newline
  * @param mpz Integer to view
  */
@@ -158,7 +187,22 @@ mpz_class octetToMpz(const octet& o);
  * @return octet A new octet containing the concatenated data.
  *               Ensure to free the returned octet's val after use.
  */
-octet concatOctet(const octet *oc1, const octet *oc2);
+octet concat_Octet(const octet *oc1, const octet *oc2);
+
+/**
+ * @brief Concatenates the second octet to the first octet, resizing the buffer if needed.
+ *
+ * This function appends the content of `oc2` to `oc1`. If `oc1`'s buffer is insufficient,
+ * it automatically resizes the buffer using `realloc`.
+ *
+ * @param oc1 Pointer to the octet that stores the result. Its buffer may be resized.
+ * @param oc2 Pointer to the octet to be appended.
+ * @return true If the concatenation is successful.
+ * @return false If inputs are invalid or memory allocation fails.
+ *
+ * @note Ensure to free `oc1->val` after use if resizing occurs.
+ */
+bool concatOctet(octet *oc1, const octet *oc2);
 
 /**
  * Hashes an octet to a 256-bit integer, used by hashToZp256

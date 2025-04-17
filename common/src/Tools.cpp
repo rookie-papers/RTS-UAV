@@ -1,4 +1,4 @@
-#include "../include/Tools.h"
+#include "Tools.h"
 
 void initRNG(csprng *rng) {
     char raw[100];
@@ -109,7 +109,7 @@ mpz_class rand_mpz(gmp_randstate_t state) {
     return res + 1;
 }
 
-mpz_class rand_mpz_w(gmp_randstate_t state){
+mpz_class rand_mpz_w(gmp_randstate_t state) {
     mpz_class res;
     mpz_class n = 100000000;  // 设置最大值为 椭圆曲线阶-1
     mpz_urandomm(res.get_mpz_t(), state, n.get_mpz_t());
@@ -128,6 +128,80 @@ mpz_class invert_mpz(const mpz_class &a, const mpz_class &m) {
     return res;
 }
 
+vector<mpz_class> getLagrangeCoffs(const vector<mpz_class> &x, const vector<mpz_class> &y, const mpz_class &modulus) {
+    size_t n = x.size();
+    assert(n == y.size() && n > 0);
+    vector<mpz_class> result(n, 0);
+    for (size_t i = 0; i < n; ++i) {
+        vector<mpz_class> basis(1, 1);
+        mpz_class denom = 1;
+        for (size_t j = 0; j < n; ++j) {
+            if (i == j) continue;
+            vector<mpz_class> temp(basis.size() + 1, 0);
+            for (size_t k = 0; k < basis.size(); ++k) {
+                temp[k] = (temp[k] - basis[k] * x[j]) % modulus;
+                temp[k + 1] = (temp[k + 1] + basis[k]) % modulus;
+            }
+            basis = temp;
+            denom = (denom * (x[i] - x[j])) % modulus;
+        }
+        denom = denom < 0 ? denom + modulus : denom;
+        mpz_class denomInv;
+        if (mpz_invert(denomInv.get_mpz_t(), denom.get_mpz_t(), modulus.get_mpz_t()) == 0) {
+            throw runtime_error("Modular inverse does not exist");
+        }
+        for (size_t k = 0; k < basis.size(); ++k) {
+            basis[k] = (basis[k] * y[i] % modulus) * denomInv % modulus;
+            if (basis[k] < 0) {
+                basis[k] += modulus;
+            }
+        }
+        if (result.size() < basis.size()) {
+            result.resize(basis.size(), 0);
+        }
+        for (size_t k = 0; k < basis.size(); ++k) {
+            result[k] = (result[k] + basis[k]) % modulus;
+            if (result[k] < 0) {
+                result[k] += modulus;
+            }
+        }
+    }
+    while (result.size() > 1 && result.back() == 0) {
+        result.pop_back();
+    }
+    return result;
+}
+
+mpz_class computePoly(const vector<mpz_class> &poly, const mpz_class &x, const mpz_class &modulus) {
+    mpz_class result = 0;
+    mpz_class power = 1;
+    for (const auto &coef: poly) {
+        result = (result + (coef * power) % modulus) % modulus;
+        power = (power * x) % modulus;
+    }
+    return result;
+}
+
+vector<mpz_class> getLagrangeBasis(const vector<mpz_class> &x, const mpz_class &q) {
+    size_t n = x.size();
+    vector<mpz_class> lambdas(n);
+    for (size_t i = 0; i < n; ++i) {
+        mpz_class numerator = 1, denominator = 1;
+        for (size_t j = 0; j < n; ++j) {
+            if (i != j) {
+                numerator = (numerator * (-x[j])) % q;
+                mpz_class diff = (x[i] - x[j]) % q;
+                if (diff < 0) diff += q;
+                denominator = (denominator * diff) % q;
+            }
+        }
+        mpz_class denominator_inv = invert_mpz(denominator, q);
+        lambdas[i] = (numerator * denominator_inv) % q;
+        if (lambdas[i] < 0) lambdas[i] += q;
+    }
+    return lambdas;
+}
+
 void show_mpz(mpz_t mpz) {
     gmp_printf("%Zx", mpz);
     cout << endl;
@@ -135,7 +209,7 @@ void show_mpz(mpz_t mpz) {
 
 octet getOctet(int maxLen) {
     octet S;
-    S.val = (char *)malloc(maxLen);
+    S.val = (char *) malloc(maxLen);
     S.max = maxLen;
     S.len = 0;
     return S;
@@ -146,12 +220,12 @@ void showOctet(const octet *S) {
     printf("len:%d,", S->len);
     printf("data:");
     for (int i = 0; i < S->len; i++) {
-        printf("%02x", (unsigned char)S->val[i]); // Print each byte in hex
+        printf("%02x", (unsigned char) S->val[i]); // Print each byte in hex
     }
     printf("}\n");
 }
 
-mpz_class octetToMpz(const octet& o) {
+mpz_class octetToMpz(const octet &o) {
     if (o.len <= 0 || o.val == nullptr) {
         std::cerr << "Error: Invalid octet structure." << std::endl;
         return mpz_class(0); // 返回零作为默认值
@@ -163,10 +237,10 @@ mpz_class octetToMpz(const octet& o) {
     return num;
 }
 
-octet concatOctet(const octet *oc1, const octet *oc2) {
+octet concat_Octet(const octet *oc1, const octet *oc2) {
     int new_len = oc1->len + oc2->len;
     octet result;
-    result.val = (char *)malloc(new_len);
+    result.val = (char *) malloc(new_len);
     result.max = new_len;
     result.len = new_len;
     memcpy(result.val, oc1->val, oc1->len);
@@ -174,10 +248,25 @@ octet concatOctet(const octet *oc1, const octet *oc2) {
     return result;
 }
 
-octet mpzToOctet(const mpz_class& num) {
+bool concatOctet(octet *oc1, const octet *oc2) {
+    if (!oc1 || !oc2 || !oc1->val) return false;
+    int required_len = oc1->len + oc2->len;
+    if (oc1->max < required_len) {
+        char *new_val = (char *)realloc(oc1->val, required_len);
+        if (!new_val) return false;
+        oc1->val = new_val;
+        oc1->max = required_len;
+    }
+    memcpy(oc1->val + oc1->len, oc2->val, oc2->len);
+    oc1->len = required_len;
+    return true;
+}
+
+
+octet mpzToOctet(const mpz_class &num) {
     // 获取字节数组所需的空间
     size_t count = 0;
-    unsigned char* buffer = (unsigned char*)mpz_export(nullptr, &count, 1, 1, 0, 0, num.get_mpz_t());
+    unsigned char *buffer = (unsigned char *) mpz_export(nullptr, &count, 1, 1, 0, 0, num.get_mpz_t());
 
     if (buffer == nullptr || count == 0) {
         std::cerr << "Error: Failed to export mpz_class to bytes." << std::endl;
@@ -185,11 +274,11 @@ octet mpzToOctet(const mpz_class& num) {
     }
 
     // 动态分配 octet 的缓冲区，大小等于 count
-    char* octetBuffer = new char[count];
-    octet o = {0, (int)count, octetBuffer};
+    char *octetBuffer = new char[count];
+    octet o = {0, (int) count, octetBuffer};
 
     // 填充 octet 的内容
-    o.len = (int)count; // 设置 octet 的长度
+    o.len = (int) count; // 设置 octet 的长度
     memcpy(o.val, buffer, count); // 将字节数组拷贝到 octet 的值
 
     // 释放 GMP 分配的内存

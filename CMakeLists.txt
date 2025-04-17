@@ -48,3 +48,4 @@ endfunction()
 
 # Define benchmark target for the RTS signature scheme
 add_scheme_executable(RTS)
+add_scheme_executable(FROST)
