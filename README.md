@@ -8,7 +8,7 @@ This repository provides the implementation of **RTS**, a runtime threshold sign
 ### 1️⃣ Clone repository with submodules and build with CMake:
 
 ```bash
-git clone --recurse-submodules git@github.com:rookie-papers/RTS-UAV.git
+git clone --recurse-submodules https://github.com/rookie-papers/RTS-UAV.git
 cd RTS-UAV
 mkdir build && cd build
 cmake ..
