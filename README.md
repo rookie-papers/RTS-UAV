@@ -5,6 +5,14 @@ This repository provides the implementation of **RTS**, a runtime threshold sign
 
 ## ⚙️ Build Instructions
 
+
+### 0️⃣ Install Required Dependencies
+
+```bash
+sudo apt update
+sudo apt install -y git cmake python3 build-essential m4
+```
+
 ### 1️⃣ Clone repository with submodules and build with CMake:
 
 ```bash
