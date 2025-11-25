@@ -64,8 +64,18 @@ UAV getUAV(Params pp, vector<mpz_class> d, vector<mpz_class> b, mpz_class id) {
 
     UAV uav;
     mpz_class fij;
+    ECP2 temp;
     for (int i = 0; i < b.size(); ++i) {
         fij = ((d[i] * id) + b[i]) % pp.q;
+        if (i == 0) {
+            ECP2_generator(&temp);
+            ECP2_mul(temp, fij);
+            uav.PK.push_back(temp);
+        } else {
+            ECP2_copy(&temp, &uav.PK[i - 1]);
+            ECP2_mul(temp, fij);
+            uav.PK.push_back(temp);
+        }
         // ElGamal
         mpz_class c1, u, beta_u;
         u = rand_mpz(state_gmp);
@@ -96,12 +106,14 @@ vector<UAV> KeyGen(Params &params, mpz_class alpha, UAV_h &uavH) {
     return UAVs;
 }
 
-parSig Sign(Params pp, UAV uav, int t, mpz_class M) {
+parSig Sign(Params pp, UAV uav, int t, mpz_class M, vector<mpz_class> S) {
     mpz_class cj = 1, sj = 1;
     for (int i = 0; i < t - 1; ++i) {
         cj = (cj * uav.c1[i]) % pp.q;
         sj = (sj * uav.c2[i]) % pp.q;
     }
+    mpz_class Pi_0 = getPi_0(pp, S, t,uav.ID);
+    sj = (sj * Pi_0) % pp.q;
     ECP Hm = hashToPoint(M, pp.q);
     ECP sigma;
     ECP_copy(&sigma, &Hm);
@@ -116,11 +128,11 @@ parSig Sign(Params pp, UAV uav, int t, mpz_class M) {
 }
 
 
-vector<parSig> collectSig(Params pp, vector<UAV> UAVs, int t, mpz_class M) {
+vector<parSig> collectSig(Params pp, vector<UAV> UAVs, int t, mpz_class M, vector<mpz_class> S) {
     vector<parSig> sigmas;
     parSig sigma;
     for (int i = 0; i < t; ++i) {
-        sigma = Sign(pp, UAVs[i], t, M);
+        sigma = Sign(pp, UAVs[i], t, M, S);
         sigmas.push_back(sigma);
     }
     return sigmas;
@@ -155,7 +167,7 @@ Sigma AggSig(vector<parSig> parSigs, Params pp, UAV_h uavH, mpz_class PK_v) {
     return sigma;
 }
 
-vector<mpz_class> getPi_0(Params pp, vector<mpz_class> ID, int t) {
+vector<mpz_class> getPi_0s(Params pp, vector<mpz_class> ID, int t) {
     vector<mpz_class> Pis;
     mpz_class prodX = 1;
     for (int i = 0; i < t; ++i) {
@@ -178,6 +190,25 @@ vector<mpz_class> getPi_0(Params pp, vector<mpz_class> ID, int t) {
     return Pis;
 }
 
+mpz_class getPi_0(Params pp, vector<mpz_class> ID, int t, mpz_class myID) {
+    mpz_class prodX = 1;
+    for (int i = 0; i < t; ++i) {
+        prodX = (prodX * ID[i]) % pp.q;
+    }
+    mpz_class denominator, numerator;
+    denominator = 1;
+    for (int j = 0; j < t; j++) {
+        if (ID[j] != myID) {
+            mpz_class temp = ((ID[j] - myID) + pp.q) % pp.q;
+            denominator = (denominator * temp) % pp.q;
+        }
+    }
+    numerator = (prodX * invert_mpz(myID, pp.q)) % pp.q;
+    mpz_class inv_den = invert_mpz(denominator, pp.q);
+    mpz_class Pi_0 = (numerator * inv_den) % pp.q;
+    return Pi_0;
+}
+
 vector<mpz_class> getPi_0(Params pp, Sigma UAVs, int t) {
     vector<mpz_class> Pis;
     for (int i = 0; i < t; i++) {
@@ -198,8 +229,8 @@ vector<mpz_class> getPi_0(Params pp, Sigma UAVs, int t) {
     return Pis;
 }
 
-int Verify(Sigma sigma, mpz_class sk_v, Params pp, mpz_class M, int t) {
-    vector<mpz_class> Pis = getPi_0(pp, sigma.IDs, t);
+int Verify(Sigma sigma, mpz_class sk_v, Params pp, mpz_class M, int t,vector<ECP2> PKs) {
+    vector<mpz_class> Pis = getPi_0s(pp, sigma.IDs, t);
     mpz_class temp, hash;
     temp = pow_mpz(pp.beta, sk_v, pp.q);
     hash = hashToCoprime(temp, pp.q - 1, getFactors());
@@ -207,28 +238,34 @@ int Verify(Sigma sigma, mpz_class sk_v, Params pp, mpz_class M, int t) {
     for (int i = 0; i < t; ++i) {
         temp = pow_mpz(sigma.aux[i], hash, pp.q);
         temp = invert_mpz(temp, pp.q);
-        temp = (Pis[i] * temp) % pp.q;
         k.push_back(temp);
     }
     ECP s;
-    ECP_copy(&s, &sigma.sig[0]);
-    ECP_mul(s, k[0]);
-    for (int i = 1; i < t; ++i) {
+    ECP_inf(&s);   // s = 0
+    ECP Hm = hashToPoint(M, pp.q);
+    FP12 left, right;
+    ECP ecpLeft;
+    for (int i = 0; i < t; ++i) {
         ECP_mul(sigma.sig[i], k[i]);
+        left = e(sigma.sig[i], pp.P2);
+        ECP_copy(&ecpLeft, &Hm);
+        ECP_mul(ecpLeft, Pis[i]);
+        right = e(ecpLeft, PKs[i]);
+//        cout << "No." << i << " partial signature pass ?: " << FP12_equals(&left, &right) << endl;
         ECP_add(&s, &sigma.sig[i]);
     }
-    FP12 left = e(s, pp.P2);
-    ECP Hm = hashToPoint(M, pp.q);
-    FP12 right = e(Hm, pp.PK[t - 2]);
+
+    left = e(s, pp.P2);
+    right = e(Hm, pp.PK[t - 2]);
     return FP12_equals(&left, &right);
 }
 
 int fussion() {
     initState(state_gmp);
     initRNG(&rng);
-    // 初始化参数
+    // init params
     mpz_class alpha, M = 123456789;
-    int n = 2, tm = 2;
+    int n = 6, tm = 6;
     // setup
     Params pp = Setup(alpha, n, tm);
     UAV_h uavH;
@@ -236,14 +273,20 @@ int fussion() {
     vector<UAV> UAVs = KeyGen(pp, alpha, uavH);
     // collect signatures
     int t = tm / 2 + 1;
-    vector<parSig> sigmas = collectSig(pp, UAVs, t, M);
+    vector<mpz_class> S;
+    vector<ECP2> PKs;
+    for (int i = 0; i < t; ++i) {
+        S.push_back(UAVs[i].ID);
+        PKs.push_back(UAVs[i].PK[t-2]);
+    }
+    vector<parSig> sigmas = collectSig(pp, UAVs, t, M, S);
     // AggSig
     mpz_class sk_v = rand_mpz(state_gmp);
     mpz_class PK_v = pow_mpz(pp.g, sk_v, pp.q);
 
     Sigma sig = AggSig(sigmas, pp, uavH, PK_v);
     // Verify
-    int pass = Verify(sig, sk_v, pp, M, t);
+    int pass = Verify(sig, sk_v, pp, M, t,PKs);
 
     return pass;
 }
@@ -261,12 +304,7 @@ void test() {
 
 
 //int main() {
-//    cout << fussion() << endl;
-//
-//    initState(state_gmp);
-//    mpz_class r = rand_mpz(state_gmp);
-//    show_mpz(r.get_mpz_t());
-//    cout << r << endl;
+//    cout << "verify RTS success ?: " << fussion() << endl;
 //    return 0;
 //}
 

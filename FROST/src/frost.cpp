@@ -144,6 +144,21 @@ ECP ComputeR(std::vector<PairDE> &B, mpz_class message) {
     return R;
 }
 
+ECP ComputeR(std::vector<PairDE> &B, mpz_class message,vector<ECP> &Rs) {
+    ECP R;
+    ECP_inf(&R);
+    for (size_t i = 0; i < B.size(); i++) {
+        mpz_class phi = H1(i, message, B);
+        ECP temp;
+        ECP_copy(&temp, &B[i].Ei);
+        ECP_mul(temp, phi);
+        ECP_add(&temp, &B[i].Di);
+        Rs.push_back(temp);
+        ECP_add(&R, &Rs[i]);
+    }
+    return R;
+}
+
 mpz_class Sign(const User &user, const Params &params, mpz_class message, std::vector<PairDE> &B) {
     ECP R = ComputeR(B, message);
     mpz_class c = H2(R, params.PK, message);
@@ -157,13 +172,34 @@ mpz_class Sign(const User &user, const Params &params, mpz_class message, std::v
 }
 
 Sigma Aggregate(const std::vector<mpz_class> &zValues, const Params &params, mpz_class message, std::vector<PairDE> &B,
-                const std::vector<User> &users) {
+                std::vector<User> &users) {
     Sigma sigma;
     sigma.z = 0;
     for (const auto &z: zValues) {
         sigma.z = (sigma.z + z) % params.p;
     }
-    sigma.R = ComputeR(B, message);
+    vector<ECP> Rs;
+    sigma.R = ComputeR(B, message,Rs);
+
+    // verify partial signature
+    std::vector<int> x;
+    for (int i = 0; i < T; i++) {
+        x.push_back(i);
+    }
+    bool pass = true;
+    ECP left,right;
+    mpz_class c = H2(sigma.R, params.PK, message);
+    for (int i = 0 ; i < zValues.size() ; ++i){
+        ECP_generator(&left);
+        ECP_mul(left, zValues[i]);
+        ECP_copy(&right,&users[i].Yi);
+        mpz_class  lambda_i = ComputeLagrangeCoefficient(x, users[i].i, params.p);
+        ECP_mul(right, (c * lambda_i) % params.p);
+        ECP_add(&right, &Rs[i]);
+        pass = pass && ECP_equals(&left, &right);
+//        cout << "No." << i << " verify success ?: " << pass << endl;
+    }
+
     return sigma;
 }
 

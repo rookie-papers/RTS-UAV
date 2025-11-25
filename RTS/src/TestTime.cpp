@@ -36,9 +36,13 @@ static void BM_Sign(benchmark::State &state) {
     UAV_h uavH;
     vector<UAV> UAVs = KeyGen(pp, alpha, uavH);
     int t = TM;
+    vector<mpz_class> S;
+    for (int i = 0; i < t; ++i) {
+        S.push_back(UAVs[i].ID);
+    }
     int i = 0;
     for (auto _: state) {
-        Sign(pp, UAVs[i], t, M);
+        Sign(pp, UAVs[i], t, M,S);
         i = (++i) % N;
     }
 }
@@ -54,7 +58,13 @@ static void BM_Tran(benchmark::State &state) {
     int t = TM;
     mpz_class sk_v = rand_mpz(state_test);
     mpz_class PK_v = pow_mpz(pp.g, sk_v, pp.q);
-    vector<parSig> sigmas = collectSig(pp, UAVs, t, M);
+    vector<mpz_class> S;
+    vector<ECP2> PKs;
+    for (int i = 0; i < t; ++i) {
+        S.push_back(UAVs[i].ID);
+        PKs.push_back(UAVs[i].PK[t-2]);
+    }
+    vector<parSig> sigmas = collectSig(pp, UAVs, t, M, S);
     for (auto _: state) {
         Sigma sig = AggSig(sigmas, pp, uavH, PK_v);
     }
@@ -68,12 +78,18 @@ static void BM_Verify(benchmark::State &state) {
     UAV_h uavH;
     vector<UAV> UAVs = KeyGen(pp, alpha, uavH);
     int t = TM;
-    vector<parSig> sigmas = collectSig(pp, UAVs, t, M);
+    vector<mpz_class> S;
+    vector<ECP2> PKs;
+    for (int i = 0; i < t; ++i) {
+        S.push_back(UAVs[i].ID);
+        PKs.push_back(UAVs[i].PK[t-2]);
+    }
+    vector<parSig> sigmas = collectSig(pp, UAVs, t, M, S);
     mpz_class sk_v = rand_mpz(state_test);
     mpz_class PK_v = pow_mpz(pp.g, sk_v, pp.q);
     Sigma sig = AggSig(sigmas, pp, uavH, PK_v);
     for (auto _: state) {
-        Verify(sig, sk_v, pp, M, t);
+        Verify(sig, sk_v, pp, M, t,PKs);
     }
 }
 

@@ -109,6 +109,16 @@ mpz_class ComputeLagrangeCoefficient(const std::vector<int> &x, int index, mpz_c
 ECP ComputeR(std::vector<PairDE> &B, mpz_class message);
 
 /**
+ * @brief Computes the elliptic curve point R based on the selected signers' data and the message.
+ *
+ * @param B Reference to the preprocessed data of selected signers.
+ * @param message The message to be signed.
+ * @param Rs The set of commitments of each signer, within which the element is Ri
+ * @return ECP The computed elliptic curve point R.
+ */
+ECP ComputeR(std::vector<PairDE> &B, mpz_class message,vector<ECP> &Rs);
+
+/**
  * @brief Generates a partial signature for a user using their private data and the system parameters.
  *
  * @param user Reference to the user struct containing private key information.
