@@ -4,6 +4,7 @@ set(CMAKE_CXX_STANDARD 17)
 
 # Build external libraries (e.g., MIRACL Core, GMP, Benchmark)
 add_subdirectory(external)
+add_subdirectory(RTS-websocket)
 
 # Include paths for common headers shared across all schemes
 include_directories(
