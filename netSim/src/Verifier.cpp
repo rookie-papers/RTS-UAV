@@ -1,6 +1,6 @@
 #include "../include/Verifier.h"
 
-namespace verifier {
+namespace verifier_NS {
 
 // ============================================================
 // Global state for verifier (inside namespace)
@@ -190,13 +190,13 @@ namespace verifier {
 // ============================================================
 int main() {
     // 1. Get params from TA
-    if (verifier::connectToTA() != 0) {
+    if (verifier_NS::connectToTA() != 0) {
         std::cerr << "[Main] Failed to connect to TA" << std::endl;
         return -1;
     }
 
     // 2. Contact UAVh to obtain Sigma and verify
-    if (verifier::connectToUAVh() != 0) {
+    if (verifier_NS::connectToUAVh() != 0) {
         std::cerr << "[Main] Failed to connect to UAVh" << std::endl;
         return -1;
     }

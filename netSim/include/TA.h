@@ -20,7 +20,7 @@
  *  - Communicating with all components via WebSocket.
  */
 
-namespace TA {
+namespace TA_NS {
 
     using websocketpp::connection_hdl;
     using Server = websocketpp::server<websocketpp::config::asio>;

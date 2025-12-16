@@ -97,6 +97,7 @@ for i in $(seq 1 $NUM_UAV); do
     ip netns exec $NS_NAME ip link set $VETH_NS up
     ip netns exec $NS_NAME ip link set lo up
     ip netns exec $NS_NAME ip route add default via ${NET_SWARM}.1
+    echo "[+] Attaching $NS_NAME success..."
 done
 
 # ================= Completion Report =================

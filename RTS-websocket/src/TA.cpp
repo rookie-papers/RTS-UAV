@@ -6,8 +6,8 @@ namespace TA {
 // Constants
 // ============================================================
 
-    constexpr int kNumUAV = 8;       // Total number of UAVs
-    constexpr int kThresholdMax = 4; // Max threshold parameter
+    int kNumUAV = 2;       // Total number of UAVs
+    int kThresholdMax = 2; // Max threshold parameter
 
 // ID used to distinguish cluster head UAVh
     const std::string kUAVhID = "6666666666666666666666666666666666666666666666666666666666666666";
@@ -29,6 +29,55 @@ namespace TA {
     std::vector<mpz_class> uavIDs;   // All UAV IDs that have registered
     std::vector<ECP2> uavPKs_t;      // All UAV public key at threshold t
 
+
+    // ============================================================
+    // Helper: Trim string
+    // ============================================================
+    std::string trim(const std::string& str) {
+        size_t first = str.find_first_not_of(" \t\n\r");
+        if (std::string::npos == first) return str;
+        size_t last = str.find_last_not_of(" \t\n\r");
+        return str.substr(first, (last - first + 1));
+    }
+
+    // ============================================================
+    // Implementation of LoadConfig
+    // ============================================================
+    void LoadConfig(const std::string& configPath) {
+        std::ifstream file(configPath);
+        if (!file.is_open()) {
+            std::cerr << "[Config] Warning: Could not open config file: " << configPath
+                      << ". Using default values." << std::endl;
+            return;
+        }
+
+        std::string line;
+        std::cout << "[Config] Loading parameters from " << configPath << "..." << std::endl;
+
+        while (std::getline(file, line)) {
+            // Remove the annotations
+            size_t commentPos = line.find('#');
+            if (commentPos != std::string::npos) {
+                line = line.substr(0, commentPos);
+            }
+
+            if (line.find("NUM_UAV=") != std::string::npos) {
+                std::string valStr = line.substr(line.find('=') + 1);
+                try {
+                    kNumUAV = std::stoi(trim(valStr));
+                    std::cout << "  -> Set kNumUAV = " << kNumUAV << std::endl;
+                } catch (...) { }
+            }
+            else if (line.find("THRESHOLD_M=") != std::string::npos) {
+                std::string valStr = line.substr(line.find('=') + 1);
+                try {
+                    kThresholdMax = std::stoi(trim(valStr));
+                    std::cout << "  -> Set kThresholdMax = " << kThresholdMax << std::endl;
+                } catch (...) { }
+            }
+        }
+        file.close();
+    }
 
 // ============================================================
 // Initialize system parameters
@@ -175,5 +224,6 @@ namespace TA {
 
 // Standalone main (optional)
 int main() {
+    TA::LoadConfig("scripts/config.env");
     return TA::run();
 }

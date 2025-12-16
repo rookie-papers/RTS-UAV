@@ -10,6 +10,8 @@
 #include <thread>
 #include <algorithm>
 
+#include <mutex>
+
 namespace UAVhNode {
 
     // ============================================================
@@ -26,6 +28,7 @@ namespace UAVhNode {
     extern std::vector<mpz_class> registeredIDs;
     extern std::vector<parSig> partialSigs;
 
+    extern std::mutex mtx;
 
     // ============================================================
     // TA communication

@@ -7,6 +7,8 @@
 #include <websocketpp/config/asio_no_tls.hpp>
 #include <websocketpp/server.hpp>
 
+#include <fstream>
+#include <sstream>
 
 /**
  * @file TA.h
@@ -30,6 +32,9 @@ namespace TA {
 // Global state (isolated inside namespace TA)
 // ============================================================
 
+    extern int kNumUAV;       // Total number of UAVs
+    extern int kThresholdMax; // Max threshold parameter
+
     extern gmp_randstate_t state;
     extern Params pp;
     extern mpz_class alpha;
@@ -43,6 +48,7 @@ namespace TA {
     extern std::vector<mpz_class> uavIDs;
     extern std::vector<ECP2> uavPKs_t;
 
+    void LoadConfig(const std::string& configPath = "scripts/config.env");
 
     /**
      * @brief Initialize TA internal parameters.

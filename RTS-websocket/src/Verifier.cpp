@@ -12,6 +12,7 @@ namespace verifier {
     mpz_class sk_v;             // verifier's secret
     std::vector<ECP2> PK_s;     // public keys of UAVs at threshold T
 
+    std::chrono::high_resolution_clock::time_point auth_start_time;
 
 // ============================================================
 // TA connection callbacks
@@ -101,6 +102,7 @@ namespace verifier {
  *        Send verifier public key PK_v so UAVh can produce aggregated Sigma.
  */
     void onUAVhOpen(Client *c, connection_hdl hdl) {
+        auth_start_time = std::chrono::high_resolution_clock::now();
         initState(state);
 
         sk_v = rand_mpz(state);
@@ -128,14 +130,15 @@ namespace verifier {
 
         Sigma sigma = str_to_Sigma(payload);
 
-        printLine("Sigma received");
-        showSigma(sigma);
-
-        printLine("Verifier secret sk_v");
-        show_mpz(sk_v.get_mpz_t());
+//        printLine("Sigma received");
+//        showSigma(sigma);
 
         int res = Verify(sigma, sk_v, params, messageM, thresholdT, PK_s);
+        auto auth_end_time = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(auth_end_time - auth_start_time).count();
+
         std::cout << "[Verifier] verify result = " << res << std::endl;
+        std::cout << ">>> Total Authentication Time: " << duration << " ms <<<" << std::endl;
 
         // Close connection so client run() returns
         c->close(hdl, websocketpp::close::status::normal, "done");

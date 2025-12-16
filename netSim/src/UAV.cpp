@@ -1,6 +1,6 @@
 #include "../include/UAV.h"
 
-namespace UAVNode {
+namespace UAVNode_NS {
 
 // ============================================================
 // Global state for UAV (isolated inside namespace)
@@ -31,14 +31,14 @@ namespace UAVNode {
         if (ec) {
             std::cerr << "[UAV] Failed to send ID to TA: " << ec.message() << std::endl;
         } else {
-            std::cout << "[UAV] Sent UAV ID to TA." << std::endl;
+//            std::cout << "[UAV] Sent UAV ID to TA." << std::endl;
         }
     }
 
 
 // Called when TA returns UAV's key + system parameters
     void handleTAMessage(Client* c, connection_hdl hdl, MsgClient msg) {
-        std::cout << "[UAV] Received parameters from TA." << std::endl;
+//        std::cout << "[UAV] Received parameters from TA." << std::endl;
 
         TransmissionPackage pkg = str_to_Package(msg->get_payload());
         pp        = pkg.pp;
@@ -114,7 +114,7 @@ namespace UAVNode {
             sigStr = parSig_to_str(sig);
 
             std::cout << "[UAV] Generated partial signature." << std::endl;
-            showParSig(sig);
+//            showParSig(sig);
         }
 
         // Send signature back to UAVh
@@ -176,5 +176,5 @@ namespace UAVNode {
 // Standalone main
 // ============================================================
 int main() {
-    return UAVNode::run();
+    return UAVNode_NS::run();
 }

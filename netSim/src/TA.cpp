@@ -4,7 +4,7 @@
 #include <algorithm> // for remove_if
 
 
-namespace TA {
+namespace TA_NS {
 
 // ============================================================
 // Constants
@@ -229,6 +229,6 @@ namespace TA {
 
 // Standalone main (optional)
 int main() {
-    TA::LoadConfig("scripts/config.env");
-    return TA::run();
+    TA_NS::LoadConfig("scripts/config.env");
+    return TA_NS::run();
 }

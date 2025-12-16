@@ -16,6 +16,7 @@ namespace UAVhNode {
     std::vector<mpz_class> registeredIDs;      // all UAV IDs in cluster
     std::vector<parSig> partialSigs;      // collected partial signatures
 
+    std::mutex mtx;
 
 // ============================================================
 // TA connection handlers (client mode)
@@ -134,10 +135,13 @@ namespace UAVhNode {
 
         if (payload != "null") {
             parSig sig = str_to_parSig(payload);
-            partialSigs.push_back(sig);
 
+            // lock
+            {
+                std::lock_guard<std::mutex> lock(mtx);
+                partialSigs.push_back(sig);
+            }
             std::cout << "[UAVh] Partial signature received." << std::endl;
-            showParSig(sig);
         } else {
             std::cout << "[UAVh] UAV_i not selected in S.\n";
         }
@@ -150,47 +154,49 @@ namespace UAVhNode {
     int collectPartialSignatures() {
         std::string ip = "ws://localhost";
         int basePort = 8002;
+        std::vector<std::thread> threads;
 
-        for (int i = 0; i < numUAV; ++i) {
+        partialSigs.clear();
+
+        auto connectTask = [&](int i) {
             Client client;
             std::string uri = ip + ":" + std::to_string(basePort + i);
 
-            std::cout << "[UAVh] Connecting to UAV at " << uri << std::endl;
-
             try {
                 client.set_access_channels(websocketpp::log::alevel::none);
+                client.set_error_channels(websocketpp::log::alevel::none);
                 client.init_asio();
 
-                client.set_open_handler(
-                        websocketpp::lib::bind(&handleUAVOpen, &client, websocketpp::lib::placeholders::_1)
-                );
-                client.set_message_handler(
-                        websocketpp::lib::bind(&handleUAVMessage, &client,
-                                               websocketpp::lib::placeholders::_1,
-                                               websocketpp::lib::placeholders::_2)
-                );
+                client.set_open_handler(bind(&handleUAVOpen, &client, websocketpp::lib::placeholders::_1));
+                client.set_message_handler(bind(&handleUAVMessage, &client,
+                                                websocketpp::lib::placeholders::_1,
+                                                websocketpp::lib::placeholders::_2));
 
                 websocketpp::lib::error_code ec;
                 auto con = client.get_connection(uri, ec);
                 if (ec) {
-                    std::cerr << "[UAVh] Failed to connect to UAV_i: "
-                              << ec.message() << std::endl;
-                    continue;
+                    // std::cerr << "Connect failed: " << ec.message() << std::endl;
+                    return;
                 }
 
                 client.connect(con);
-
-                std::thread t([&client]() { client.run(); });
-                if (t.joinable()) t.join();
+                client.run();
             }
             catch (const std::exception &e) {
-                std::cerr << "[UAVh Exception] " << e.what() << std::endl;
+                std::cerr << "[Thread Exception] " << e.what() << std::endl;
             }
-        }
+        };
 
+        std::cout << "[UAVh] Starting parallel collection UAV..." << std::endl;
+        for (int i = 0; i < numUAV; ++i) {
+            threads.emplace_back(connectTask, i);
+        }
+        for (auto &t : threads) {
+            if (t.joinable()) t.join();
+        }
+        std::cout << "[UAVh] Collection finished. Received " << partialSigs.size() << " signatures." << std::endl;
         return 0;
     }
-
 
 // ============================================================
 // Server for Verifier (aggregated signature)
@@ -202,6 +208,7 @@ namespace UAVhNode {
         mpz_class PK_v = str_to_mpz(payload);
 
         std::cout << "[Verifier] PK_v received.\n";
+        collectPartialSignatures();
 
         Sigma sigma = AggSig(partialSigs, pp, uavh, PK_v);
         std::string sigStr = Sigma_to_str(sigma);
@@ -249,7 +256,6 @@ namespace UAVhNode {
 
     int run() {
         connectToTA();
-        collectPartialSignatures();
         startUAVhServer();
         return 0;
     }

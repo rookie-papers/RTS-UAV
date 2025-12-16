@@ -16,7 +16,7 @@
  *  - Running threshold verification Verify()
  */
 
-namespace verifier {
+namespace verifier_NS {
 
     // ============================================================
     // Define concrete websocketpp client type

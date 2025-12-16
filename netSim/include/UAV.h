@@ -21,7 +21,7 @@
  * function signatures match exactly between declaration and definition.
  */
 
-namespace UAVNode {
+namespace UAVNode_NS {
 
     // ------------------------------
     // websocketpp concrete aliases

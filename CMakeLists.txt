@@ -2,6 +2,11 @@ cmake_minimum_required(VERSION 3.28)
 project(RTS_UAV)
 set(CMAKE_CXX_STANDARD 17)
 
+# Define default parameters with cache variables to allow command-line overrides.
+# Usage example: cmake -DN=256 -DTM=256 .. ; If not provided, defaults to 4.
+set(N "4" CACHE STRING "Parameter N size")
+set(TM "4" CACHE STRING "Parameter TM size")
+
 # Build external libraries (e.g., MIRACL Core, GMP, Benchmark)
 add_subdirectory(external)
 add_subdirectory(RTS-websocket)
@@ -46,6 +51,13 @@ function(add_scheme_executable name)
             gmp::gmpxx
             benchmark::benchmark
     )
+
+    # Apply these variables as global preprocessor definitions.
+    target_compile_definitions(benchmark_${name}
+            PRIVATE
+            N=${N}
+            TM=${TM}
+    )
 endfunction()
 
 # Define benchmark target for the RTS signature scheme
@@ -53,3 +65,10 @@ add_scheme_executable(RTS)
 add_scheme_executable(FROST)
 add_scheme_executable(MuSig2)
 add_scheme_executable(MTS)
+
+# Copy auto_bench.py from the source directory to the build directory automatically
+configure_file(
+        ${CMAKE_CURRENT_SOURCE_DIR}/RTS/auto_bench.py  # Source file path
+        ${CMAKE_CURRENT_BINARY_DIR}/auto_bench.py      # Destination file path
+        COPYONLY                                       # Copy only, no variable substitution
+)

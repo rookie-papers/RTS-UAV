@@ -4,8 +4,16 @@
 csprng rng_test;
 gmp_randstate_t state_test;
 
-#define N 128
-#define TM 128
+//#define N 128
+//#define TM 128
+
+#ifndef N
+    #define N 4
+#endif
+
+#ifndef TM
+    #define TM 4
+#endif
 
 static void BM_Setup(benchmark::State &state) {
     initState(state_test);
