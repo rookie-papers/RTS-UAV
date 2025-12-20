@@ -28,7 +28,6 @@ namespace UAVhNode_NS {
     extern int threshold;
     extern int numUAV;
 
-    extern std::vector<mpz_class> registeredIDs;
     extern std::vector<parSig> partialSigs;
     extern std::mutex sigMutex;
 

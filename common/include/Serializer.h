@@ -1,6 +1,8 @@
 #include "Tools.h"
 #include "../../RTS-websocket/include/RTS.h"
 
+using namespace RTS_web;
+
 /**
  * @struct TransmissionPackage
  * @brief A data structure used to encapsulate transmission information between entities.
@@ -13,6 +15,7 @@ typedef struct {
     mpz_class M;        ///< Secret key of participant i
     int t;            ///< Public key of the original signer
     UAV uav;
+    vector<mpz_class> registeredIDs;
 //    long long timestamp;   ///< Current timestamp (ms)
 } TransmissionPackage;
 

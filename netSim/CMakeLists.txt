@@ -9,7 +9,7 @@ file(GLOB COMMON_SRC
 foreach(file ${SCHEME_SRC_FILES})
     get_filename_component(filename ${file} NAME_WE)
 
-    add_executable(${filename}_netSim ${file} ${COMMON_SRC} scheme/RTS.cpp)
+    add_executable(${filename}_netSim ${file} ${COMMON_SRC} ../RTS-websocket/scheme/RTS.cpp)
 
     target_include_directories(${filename}_netSim PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/include

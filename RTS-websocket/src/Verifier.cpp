@@ -24,13 +24,10 @@ namespace verifier {
     void onTAOpen(Client *c, connection_hdl hdl) {
         initState(state);
 
-        // Use a fixed ID for verifier/test (same as other components)
-        mpz_class verID =
-                0x6666666666666666666666666666666666666666666666666666666666666666_mpz;
-        std::string idStr = mpz_to_str(verID);
+        std::string type = "Verifier";
 
         websocketpp::lib::error_code ec;
-        c->send(hdl, idStr, websocketpp::frame::opcode::text, ec);
+        c->send(hdl, type, websocketpp::frame::opcode::text, ec);
 
         if (ec) {
             std::cerr << "[Verifier] Failed to send ID to TA: " << ec.message() << std::endl;

@@ -40,6 +40,7 @@ namespace UAVNode {
     extern UAV             uav;       // UAV's private information (struct defined in common)
     extern mpz_class       message;   // message M
     extern int             threshold; // threshold t
+    extern vector<mpz_class> registeredIDs;
 
     // ------------------------------
     // TA connection handlers (client mode)
@@ -74,12 +75,23 @@ namespace UAVNode {
     // UAV server handlers (server mode)
     // ------------------------------
 
-    /**
-     * @brief Handle a request from UAVh: receive signer-set S and reply with partial signature.
+/**
+     * @brief Callback function executed when a message (signer set) is received from UAVh.
      *
-     * @param server pointer to websocketpp server instance
-     * @param hdl    connection handle
-     * @param msg    received message pointer
+     * This function handles the "Sign Request" logic on the UAV side.
+     * It receives the selected signer set encoded as a compact bitmap to save bandwidth.
+     *
+     * Workflow:
+     * 1. **Self-Check**: Checks if the local UAV is selected using bitwise operations on the received payload (O(1) complexity).
+     * 2. **Set Reconstruction**: If selected, iterates through the bitmap to reconstruct the full
+     * `signerSet` (vector of IDs) using the local `registeredIDs` lookup table.
+     * This is required to calculate Lagrange coefficients during signing.
+     * 3. **Signing**: Generates a partial signature using the reconstructed set and local private key.
+     * 4. **Response**: Sends the partial signature string (or "null" if not selected) back to UAVh.
+     *
+     * @param server Pointer to the WebSocket++ server endpoint instance.
+     * @param hdl    The handle identifying the connection to UAVh.
+     * @param msg    The received message object containing the binary bitmap payload.
      */
     void serverOnMessage(Server* server, connection_hdl hdl, MsgServer msg);
 

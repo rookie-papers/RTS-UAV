@@ -45,8 +45,9 @@ namespace TA {
     extern mpz_class messageM;
     extern int thresholdT;
 
-    extern std::vector<mpz_class> uavIDs;
+    extern std::vector<mpz_class> registeredIDs;
     extern std::vector<ECP2> uavPKs_t;
+    extern std::atomic<int> serialNumber;
 
     void LoadConfig(const std::string& configPath = "scripts/config.env");
 

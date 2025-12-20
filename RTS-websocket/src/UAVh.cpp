@@ -13,7 +13,6 @@ namespace UAVhNode {
     mpz_class message;     // message M
     int threshold;   // t
     int numUAV;      // n
-    std::vector<mpz_class> registeredIDs;      // all UAV IDs in cluster
     std::vector<parSig> partialSigs;      // collected partial signatures
 
     std::mutex mtx;
@@ -26,13 +25,10 @@ namespace UAVhNode {
     void handleTAOpen(Client *c, connection_hdl hdl) {
         initState(state);
 
-        // Fixed aggregator ID for testing/demo
-        uavh.ID = 0x6666666666666666666666666666666666666666666666666666666666666666_mpz;
-
-        std::string idStr = mpz_to_str(uavh.ID);
+        std::string type = "UAVh";
         websocketpp::lib::error_code ec;
 
-        c->send(hdl, idStr, websocketpp::frame::opcode::text, ec);
+        c->send(hdl, type, websocketpp::frame::opcode::text, ec);
         if (ec) {
             std::cerr << "[UAVh] Failed to send ID to TA: " << ec.message() << std::endl;
         } else {
@@ -50,7 +46,6 @@ namespace UAVhNode {
         pp = pkg.pp;
         uavh.ID = pkg.uav.ID;
         uavh.alpha = pkg.uav.c2[0];
-        registeredIDs = pkg.uav.c1;  // all UAV_i IDs
         message = pkg.M;
         threshold = pkg.t;
         numUAV = pkg.uav.c2[1].get_si();
@@ -113,21 +108,34 @@ namespace UAVhNode {
 
 // Called when connection to UAV_i is opened: send signer set S
     void handleUAVOpen(Client *c, connection_hdl hdl) {
-        // Select the first t UAVs as signer set S
-        std::vector<mpz_class> S(registeredIDs.begin(),
-                                 registeredIDs.begin() + threshold);
+        // 1. Calculate bitmap size in bytes: ceil(total UAVs / 8)
+        // (pp.n + 7) / 8 is the standard integer arithmetic for ceiling division
+        int bitmapSize = (pp.n + 7) / 8;
 
-        std::string str = mpzArr_to_str(S);
+        // 2. Initialize the bitmap with all zeros
+        std::vector<uint8_t> bitmap(bitmapSize, 0);
+
+        // 3. Set the bits for the selected UAVs to 1
+        // Here we select the first 'threshold' UAVs (indices 0 to t-1).
+        for (int i = 0; i < threshold; ++i) {
+            // Calculate which byte and which bit within that byte corresponds to index 'i'
+            int byteIndex = i / 8;
+            int bitIndex  = i % 8;
+            bitmap[byteIndex] |= (1 << bitIndex);
+        }
+
+        // 4. Send the bitmap as a binary payload
+        // Convert the vector to a string container for WebSocket transmission
+        std::string str(bitmap.begin(), bitmap.end());
 
         websocketpp::lib::error_code ec;
-        c->send(hdl, str, websocketpp::frame::opcode::text, ec);
+        // Use opcode::binary for raw byte transmission
+        c->send(hdl, str, websocketpp::frame::opcode::binary, ec);
 
         if (ec) {
-            std::cerr << "[UAVh] Failed to send S to UAV_i: "
-                      << ec.message() << std::endl;
+            std::cerr << "[UAVh] Error sending bitmap: " << ec.message() << std::endl;
         }
     }
-
 
 // Handle the partial signature returned by UAV_i
     void handleUAVMessage(Client *c, connection_hdl hdl, MsgClient msg) {

@@ -17,7 +17,9 @@ std::string Package_to_str(TransmissionPackage pkg) {
         << mpz_to_str(pkg.uav.ID) << "#"
         << mpzArr_to_str(pkg.uav.c1) << "#"
         << mpzArr_to_str(pkg.uav.c2) << "#"
-        << ECP2Arr_to_str(pkg.uav.PK);
+        << ECP2Arr_to_str(pkg.uav.PK) << "#"
+        << to_string(pkg.uav.serialNumber) << "#"
+        << mpzArr_to_str(pkg.registeredIDs);
     return oss.str();
 }
 
@@ -32,7 +34,7 @@ TransmissionPackage str_to_Package(string str) {
         start = end + 1;
     }
     fields.push_back(str.substr(start));
-    if (fields.size() != 13) {
+    if (fields.size() != 15) {
         throw std::runtime_error("Invalid transmission package format.");
     }
     pkg.pp.n = stoi(fields[0]);
@@ -50,6 +52,8 @@ TransmissionPackage str_to_Package(string str) {
     pkg.uav.c1 = str_to_mpzArr(fields[10]);
     pkg.uav.c2 = str_to_mpzArr(fields[11]);
     pkg.uav.PK = str_to_ECP2Arr(fields[12]);
+    pkg.uav.serialNumber = stoi(fields[13]);
+    pkg.registeredIDs = str_to_mpzArr(fields[14]);
 
     return pkg;
 }

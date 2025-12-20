@@ -5,7 +5,6 @@
 
 
 namespace TA_NS {
-
 // ============================================================
 // Constants
 // ============================================================
@@ -13,25 +12,24 @@ namespace TA_NS {
     int kNumUAV = 2;       // Total number of UAVs
     int kThresholdMax = 2; // Max threshold parameter
 
-// ID used to distinguish cluster head UAVh
-    const std::string kUAVhID = "6666666666666666666666666666666666666666666666666666666666666666";
 
 // ============================================================
 // Global state (isolated inside namespace TA)
 // ============================================================
 
     gmp_randstate_t state;
-    Params pp;                       // System public parameters
+    Params pp;              // System public parameters
     mpz_class alpha;                 // UAV_h's transformation key
 
     std::vector<mpz_class> poly_d;   // Polynomial d for key distribution
     std::vector<mpz_class> poly_b;   // Polynomial b for key distribution and PK construction
 
     mpz_class messageM;              // Test message to be signed
-    int thresholdT = 0;              // Threshold t = TM/2 + 1
+    int thresholdT = 2;              // Threshold t = TM
 
-    std::vector<mpz_class> uavIDs;   // All UAV IDs that have registered
+    std::vector<mpz_class> registeredIDs;   // All UAV IDs that have registered
     std::vector<ECP2> uavPKs_t;      // All UAV public key at threshold t
+    std::atomic<int> serialNumber{0};
 
 
     // ============================================================
@@ -107,11 +105,15 @@ namespace TA_NS {
         pp.PK = getPK(poly_b);
 
         // Compute threshold value t
-        thresholdT = kThresholdMax / 2 + 1;
-        // thresholdT = kThresholdMax - 2;
+        thresholdT = kThresholdMax;
 
         // Example message to sign
         messageM = 123456789;
+
+        // Generate UAV IDs
+        for (int i = 0; i < pp.n; ++i) {
+            registeredIDs.push_back(rand_mpz(state));
+        }
 
         std::cout << "[TA] Initialization complete. Threshold t = "
                   << thresholdT << std::endl;
@@ -122,37 +124,26 @@ namespace TA_NS {
 // Handle UAV / UAVh / Verifier registration requests
 // ============================================================
     void onRegister(Server *server, connection_hdl hdl, MessagePtr msg) {
-        const std::string payload = msg->get_payload();
-        std::cout << "[TA] Received registration message: " << payload << std::endl;
-
-        // Convert UAV ID into mpz
-        mpz_class uavID = str_to_mpz(payload);
-        uavIDs.push_back(uavID);
+        const std::string type = msg->get_payload();
+        std::cout << "[TA] Received registration message: " << type << std::endl;
 
         TransmissionPackage pkg;
         pkg.pp = pp;
         pkg.M = messageM;
         pkg.t = thresholdT;
 
-        // ------------------------------------------------------------
         // Normal UAV
-        // ------------------------------------------------------------
-        if (payload != kUAVhID) {
-            pkg.uav = getUAV(pkg.pp, poly_d, poly_b, uavID);
+        if (type == "UAV") {
+            pkg.registeredIDs = registeredIDs;
+            pkg.uav = getUAV(pkg.pp, poly_d, poly_b, registeredIDs[serialNumber.fetch_add(1)]);
 
             // Store the PK fragment at index t-2 (required by UAVh)
             uavPKs_t.push_back(pkg.uav.PK[thresholdT - 2]);
         }
 
-        // ------------------------------------------------------------
-        // Cluster head UAVh (special) or Verifier
-        // ------------------------------------------------------------
+            // Cluster head UAVh (special) or Verifier
         else {
-            pkg.uav.ID = uavID;
             pkg.uav.PK = uavPKs_t;   // Send all UAV PK fragments to UAVh for verifying the legitimacy of partial signatures
-            pkg.uav.c1 = uavIDs;     // Provide all UAV IDs to UAVh
-
-            // Transmission key and UAV numbers: (masterSK, N)
             pkg.uav.c2 = {alpha, kNumUAV};
 
             std::cout << "[TA] UAVh registered. Transformation key key α = ";
@@ -223,7 +214,6 @@ namespace TA_NS {
         initParams();
         return startServer();
     }
-
 } // namespace TA
 
 

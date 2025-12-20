@@ -29,8 +29,9 @@ namespace TA_NS {
 // ============================================================
 // Global state (isolated inside namespace TA)
 // ============================================================
-    extern int kNumUAV;
-    extern int kThresholdMax;
+
+    extern int kNumUAV;       // Total number of UAVs
+    extern int kThresholdMax; // Max threshold parameter
 
     extern gmp_randstate_t state;
     extern Params pp;
@@ -42,9 +43,9 @@ namespace TA_NS {
     extern mpz_class messageM;
     extern int thresholdT;
 
-    extern std::vector<mpz_class> uavIDs;
+    extern std::vector<mpz_class> registeredIDs;
     extern std::vector<ECP2> uavPKs_t;
-
+    extern std::atomic<int> serialNumber;
 
     void LoadConfig(const std::string& configPath = "scripts/config.env");
 

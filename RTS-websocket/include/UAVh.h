@@ -25,7 +25,6 @@ namespace UAVhNode {
     extern int threshold;
     extern int numUAV;
 
-    extern std::vector<mpz_class> registeredIDs;
     extern std::vector<parSig> partialSigs;
 
     extern std::mutex mtx;
@@ -69,10 +68,22 @@ namespace UAVhNode {
     // UAV_i partial signatures
     // ============================================================
 
-    /**
-     * @brief UAVh sends a selected identity set S.
-     *        If a UAV's ID ∈ S, it will return a partial signature.
+/**
+     * @brief Callback function executed when a WebSocket connection is established with a UAV.
+     *
+     * This function constructs and transmits the selected signer set S to the connected UAV.
+     * To optimize bandwidth utilization in constrained networks, the set S is encoded
+     * as a compact bitmap (bit-array) rather than a list of full identities.
+     *
+     * Mechanism:
+     * 1. Calculates the bitmap size based on total UAVs (N).
+     * 2. Sets the bits corresponding to the selected 'threshold' (t) UAVs to 1.
+     * 3. Sends the bitmap as a binary payload.
+     *
+     * @param c   Pointer to the WebSocket++ client endpoint instance.
+     * @param hdl The handle identifying the active connection to the specific UAV.
      */
+    void handleUAVOpen(Client *c, connection_hdl hdl);
     void handleUAVOpen(Client *c, connection_hdl hdl);
 
     /**
