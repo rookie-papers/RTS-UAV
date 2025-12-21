@@ -30,6 +30,7 @@ namespace UAVhNode_NS {
 
     extern std::vector<parSig> partialSigs;
     extern std::mutex sigMutex;
+    extern string bitmap;
 
 
 

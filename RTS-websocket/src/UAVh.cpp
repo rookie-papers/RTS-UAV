@@ -16,6 +16,7 @@ namespace UAVhNode {
     std::vector<parSig> partialSigs;      // collected partial signatures
 
     std::mutex mtx;
+    string bitmap;
 
 // ============================================================
 // TA connection handlers (client mode)
@@ -106,35 +107,18 @@ namespace UAVhNode {
 // Collect partial signatures from UAV_i
 // ============================================================
 
-// Called when connection to UAV_i is opened: send signer set S
+// Called when connection to UAV_i is opened: send the bitmap provided by Verifier
     void handleUAVOpen(Client *c, connection_hdl hdl) {
-        // 1. Calculate bitmap size in bytes: ceil(total UAVs / 8)
-        // (pp.n + 7) / 8 is the standard integer arithmetic for ceiling division
-        int bitmapSize = (pp.n + 7) / 8;
-
-        // 2. Initialize the bitmap with all zeros
-        std::vector<uint8_t> bitmap(bitmapSize, 0);
-
-        // 3. Set the bits for the selected UAVs to 1
-        // Here we select the first 'threshold' UAVs (indices 0 to t-1).
-        for (int i = 0; i < threshold; ++i) {
-            // Calculate which byte and which bit within that byte corresponds to index 'i'
-            int byteIndex = i / 8;
-            int bitIndex  = i % 8;
-            bitmap[byteIndex] |= (1 << bitIndex);
-        }
-
-        // 4. Send the bitmap as a binary payload
-        // Convert the vector to a string container for WebSocket transmission
-        std::string str(bitmap.begin(), bitmap.end());
-
         websocketpp::lib::error_code ec;
-        // Use opcode::binary for raw byte transmission
-        c->send(hdl, str, websocketpp::frame::opcode::binary, ec);
+
+        c->send(hdl, bitmap, websocketpp::frame::opcode::binary, ec);
 
         if (ec) {
             std::cerr << "[UAVh] Error sending bitmap: " << ec.message() << std::endl;
         }
+         else {
+            std::cout << "[UAVh] Bitmap sent to UAV." << std::endl;
+         }
     }
 
 // Handle the partial signature returned by UAV_i
@@ -158,7 +142,6 @@ namespace UAVhNode {
     }
 
 
-// Connect UAVh to each UAV_i to collect partial signatures
     int collectPartialSignatures() {
         std::string ip = "ws://localhost";
         int basePort = 8002;
@@ -174,8 +157,9 @@ namespace UAVhNode {
                 client.set_access_channels(websocketpp::log::alevel::none);
                 client.set_error_channels(websocketpp::log::alevel::none);
                 client.init_asio();
+                client.set_open_handler(bind(&handleUAVOpen, &client,
+                                             websocketpp::lib::placeholders::_1));
 
-                client.set_open_handler(bind(&handleUAVOpen, &client, websocketpp::lib::placeholders::_1));
                 client.set_message_handler(bind(&handleUAVMessage, &client,
                                                 websocketpp::lib::placeholders::_1,
                                                 websocketpp::lib::placeholders::_2));
@@ -195,7 +179,6 @@ namespace UAVhNode {
             }
         };
 
-        std::cout << "[UAVh] Starting parallel collection UAV..." << std::endl;
         for (int i = 0; i < numUAV; ++i) {
             threads.emplace_back(connectTask, i);
         }
@@ -210,12 +193,33 @@ namespace UAVhNode {
 // Server for Verifier (aggregated signature)
 // ============================================================
 
-// Handle verifier request: receive PK_v and reply with aggregated signature
+    // Hex string to binary string
+    std::string hexToString(const std::string& input) {
+        size_t len = input.length();
+        if (len & 1) throw std::invalid_argument("Odd length");
+        std::string output;
+        output.reserve(len / 2);
+        for (size_t i = 0; i < len; i += 2) {
+            std::string byteString = input.substr(i, 2);
+            char byte = (char)strtol(byteString.c_str(), NULL, 16);
+            output.push_back(byte);
+        }
+        return output;
+    }
+
+// Handle verifier request: receive "PK_v # HexBitmap"
     void handleVerifierMessage(Server *s, connection_hdl hdl, MsgServer msg) {
         std::string payload = msg->get_payload();
-        mpz_class PK_v = str_to_mpz(payload);
 
-        std::cout << "[Verifier] PK_v received.\n";
+        size_t delPos = payload.find('#');
+        if (delPos == std::string::npos) {
+            std::cerr << "[UAVh] Error: Invalid payload format from Verifier." << std::endl;
+            return;
+        }
+        std::string pkStr = payload.substr(0, delPos);
+        std::string hexBitmap = payload.substr(delPos + 1);
+        mpz_class PK_v = str_to_mpz(pkStr);
+        bitmap = hexToString(hexBitmap);
         collectPartialSignatures();
 
         Sigma sigma = AggSig(partialSigs, pp, uavh, PK_v);
@@ -223,13 +227,13 @@ namespace UAVhNode {
 
         try {
             s->send(hdl, sigStr, websocketpp::frame::opcode::text);
+            std::cout << "[UAVh] Sent aggregated signature (size: " << sigStr.size() << " bytes).\n";
         }
         catch (const websocketpp::exception &e) {
             std::cerr << "[UAVh] Failed to send aggregated signature: "
                       << e.what() << std::endl;
         }
     }
-
 
 // Start server for verifier (port 8001)
     void startUAVhServer() {

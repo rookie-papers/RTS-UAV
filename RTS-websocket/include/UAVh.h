@@ -28,6 +28,7 @@ namespace UAVhNode {
     extern std::vector<parSig> partialSigs;
 
     extern std::mutex mtx;
+    extern string bitmap;
 
     // ============================================================
     // TA communication

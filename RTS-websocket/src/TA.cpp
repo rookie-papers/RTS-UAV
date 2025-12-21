@@ -129,9 +129,9 @@ namespace TA {
         pkg.M = messageM;
         pkg.t = thresholdT;
 
+        pkg.registeredIDs = registeredIDs;
         // Normal UAV
         if (type == "UAV") {
-            pkg.registeredIDs = registeredIDs;
             pkg.uav = getUAV(pkg.pp, poly_d, poly_b, registeredIDs[serialNumber.fetch_add(1)]);
 
             // Store the PK fragment at index t-2 (required by UAVh)

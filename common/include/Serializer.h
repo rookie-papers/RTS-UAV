@@ -31,7 +31,7 @@ std::string Package_to_str(TransmissionPackage pkg);
  * @param str The string representation of a TransmissionPackage.
  * @return The deserialized TransmissionPackage.
  */
-TransmissionPackage str_to_Package(string str);
+TransmissionPackage str_to_Package(std::string str);
 
 /**
  * @brief Displays the contents of a TransmissionPackage for debugging or logging.
@@ -58,7 +58,7 @@ parSig str_to_parSig(const std::string &str);
  * @brief Displays the contents of a parSig for debugging or logging.
  * @param sig The parSig object to display.
  */
-void showParSig(parSig sig);
+void showParSig(parSig& sig);
 
 
 /**
@@ -79,7 +79,7 @@ Sigma str_to_Sigma(const std::string &str);
  * @brief Displays the contents of a Sigma signature for debugging or logging.
  * @param sg The Sigma object to display.
  */
-void showSigma(Sigma sg);
+void showSigma(Sigma& sigma);
 
 
 /**
@@ -181,3 +181,7 @@ std::string ECP2Arr_to_str(const std::vector<ECP2>& ecp2s, bool compressed = tru
  * @return The converted array of ECP2 points
  */
 std::vector<ECP2> str_to_ECP2Arr(const std::string& str);
+
+static std::string binToHex(const std::string& input);
+
+static std::string hexToBin(const std::string& input);

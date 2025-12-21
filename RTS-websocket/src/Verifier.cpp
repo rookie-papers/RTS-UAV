@@ -13,6 +13,7 @@ namespace verifier {
     std::vector<ECP2> PK_s;     // public keys of UAVs at threshold T
 
     std::chrono::high_resolution_clock::time_point auth_start_time;
+    vector<mpz_class> registeredIDs;
 
 // ============================================================
 // TA connection callbacks
@@ -51,6 +52,7 @@ namespace verifier {
         PK_s = pkg.uav.PK;   // store UAV PK fragments
         messageM = pkg.M;
         thresholdT = pkg.t;
+        registeredIDs = pkg.registeredIDs;
 
         // Close connection to TA after receiving parameters
         c->close(hdl, websocketpp::close::status::normal, "TA done");
@@ -90,57 +92,82 @@ namespace verifier {
         return 0;
     }
 
+    // Helper function: Converts a binary string to a Hex string to ensure safe transmission
+    std::string stringToHex(const std::string& input) {
+        static const char* const lut = "0123456789ABCDEF";
+        size_t len = input.length();
+        std::string output;
+        output.reserve(2 * len);
+        for (size_t i = 0; i < len; ++i) {
+            const unsigned char c = input[i];
+            output.push_back(lut[c >> 4]);
+            output.push_back(lut[c & 15]);
+        }
+        return output;
+    }
 
 // ============================================================
-// UAVh connection callbacks (contact aggregator to obtain aggregated sigma)
+// UAVh connection callbacks
 // ============================================================
-/**
- * @brief Called when connection to UAVh is opened.
- *        Send verifier public key PK_v so UAVh can produce aggregated Sigma.
- */
+
     void onUAVhOpen(Client *c, connection_hdl hdl) {
         auth_start_time = std::chrono::high_resolution_clock::now();
         initState(state);
 
+        // 1. Generate Verifier's ephemeral public/private key pair
         sk_v = rand_mpz(state);
-        mpz_class PK_v = pow_mpz(params.g, sk_v, params.q); // g^sk mod q
+        mpz_class PK_v = pow_mpz(params.g, sk_v, params.q);
         std::string pkStr = mpz_to_str(PK_v);
 
+        // 2. Generate a random bitmap (selecting 't' UAVs out of 'n')
+        int n = params.n;
+        int t = params.tm;
+
+        // Create a list of indices [0, n-1] and shuffle them to select random signers
+        std::vector<int> indices(n);
+        std::iota(indices.begin(), indices.end(), 0);
+        std::shuffle(indices.begin(), indices.end(), std::mt19937(std::random_device()()));
+
+        // Initialize the bitmap with zeros
+        int bitmapSize = (n + 7) / 8;
+        std::string bitmap(bitmapSize, 0);
+
+        // Set the bits for the first 't' indices from the shuffled list
+        for(int i = 0; i < t; ++i) {
+            int idx = indices[i];
+            int byteIndex = idx / 8;
+            int bitIndex  = idx % 8;
+            bitmap[byteIndex] |= (1 << bitIndex);
+        }
+
+        // 3. Construct the payload: PK_v # Hex(Bitmap)
+        std::string bitmapHex = stringToHex(bitmap);
+        std::string msg = pkStr + "#" + bitmapHex;
+
         websocketpp::lib::error_code ec;
-        c->send(hdl, pkStr, websocketpp::frame::opcode::text, ec);
+        c->send(hdl, msg, websocketpp::frame::opcode::text, ec);
 
         if (ec) {
-            std::cerr << "[Verifier] Failed to send PK_v to UAVh: " << ec.message() << std::endl;
+            std::cerr << "[Verifier] Failed to send Challenge (PK+Bitmap): " << ec.message() << std::endl;
         } else {
-            std::cout << "[Verifier] Sent PK_v to UAVh." << std::endl;
+            std::cout << "[Verifier] Sent Challenge to UAVh (t=" << t << ")." << std::endl;
         }
     }
 
-
-/**
- * @brief Called when aggregated signature is returned from UAVh.
- *        Deserialize Sigma and run verification.
- */
     void onUAVhMessage(Client *c, connection_hdl hdl, MsgClient msg) {
         std::string payload = msg->get_payload();
         std::cout << "[Verifier] Received aggregated signature from UAVh." << std::endl;
 
         Sigma sigma = str_to_Sigma(payload);
+        int res = Verify(sigma, sk_v, params, messageM, registeredIDs, PK_s);
 
-//        printLine("Sigma received");
-//        showSigma(sigma);
-
-        int res = Verify(sigma, sk_v, params, messageM, thresholdT, PK_s);
         auto auth_end_time = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(auth_end_time - auth_start_time).count();
-
         std::cout << "[Verifier] verify result = " << res << std::endl;
         std::cout << ">>> Total Authentication Time: " << duration << " ms <<<" << std::endl;
 
-        // Close connection so client run() returns
         c->close(hdl, websocketpp::close::status::normal, "done");
     }
-
 
 // ============================================================
 // Connect to UAVh helper

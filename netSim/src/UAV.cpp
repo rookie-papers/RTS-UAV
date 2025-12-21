@@ -101,11 +101,11 @@ namespace UAVNode_NS {
 // ============================================================
 
     void serverOnMessage(Server* server, connection_hdl hdl, MsgServer msg) {
-        // 1. Retrieve the bitmap payload (Treat as binary data)
-        std::string payload = msg->get_payload();
+        // 1. Retrieve the bitmap payload (Binary Data)
+        std::string bitmap = msg->get_payload();
         std::string sigStr = "null";
 
-        // 2. Retrieve local serial number (assumed range: 0 to n-1)
+        // 2. Retrieve local serial number
         int myIndex = uav.serialNumber;
 
         // 3. Check if the current UAV is selected in the bitmap
@@ -113,48 +113,28 @@ namespace UAVNode_NS {
         int myByteIndex = myIndex / 8;
         int myBitIndex  = myIndex % 8;
 
-        // Safety check: Ensure the received bitmap is large enough to contain this index
-        if (myByteIndex < payload.size()) {
-            // Extract byte -> Shift -> Check if the specific bit is 1
-            uint8_t byteVal = static_cast<uint8_t>(payload[myByteIndex]);
+        if (myByteIndex < bitmap.size()) {
+            uint8_t byteVal = static_cast<uint8_t>(bitmap[myByteIndex]);
             isSelected = (byteVal >> myBitIndex) & 1;
         }
 
-        // 4. If selected, proceed with signing operations
+        // 4. If selected, generate partial signature
         if (isSelected) {
-            std::vector<mpz_class> signerSet;
-            // Iterate through the entire bitmap to identify all selected UAV IDs
-            for (int i = 0; i < pp.n; ++i) {
-                int byteIdx = i / 8;
-                int bitIdx  = i % 8;
-
-                if (byteIdx < payload.size()) {
-                    uint8_t val = static_cast<uint8_t>(payload[byteIdx]);
-                    if ((val >> bitIdx) & 1) {
-                        signerSet.push_back(registeredIDs[i]);
-                    }
-                }
-            }
-
-            // 5. Execute Signing
-            parSig sig = Sign(pp, uav, threshold, message, signerSet);
+            parSig sig = Sign(pp, uav, threshold, message, bitmap, registeredIDs);
             sigStr = parSig_to_str(sig);
-
-            std::cout << "[UAV] Generated partial signature." << std::endl;
-            // showParSig(sig);
+            std::cout << "[UAV " << myIndex << "] Generated signature." << std::endl;
         } else {
-            std::cout << "[UAV] Not selected. Idle." << std::endl;
+            std::cout << "[UAV " << myIndex << "] Not selected. Idle." << std::endl;
         }
 
-        // 6. Send response back to UAVh
+        // 5. Send response back to UAVh (Aggregator)
         try {
             server->send(hdl, sigStr, websocketpp::frame::opcode::text);
         }
         catch (const websocketpp::exception& e) {
-            std::cerr << "[UAV Error] Failed to send partial signature: " << e.what() << std::endl;
+            std::cerr << "[UAV Error] Failed to send: " << e.what() << std::endl;
         }
     }
-
 
 // Start UAV server (listening for UAVh)
     void startUAVServer() {

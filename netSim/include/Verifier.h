@@ -39,6 +39,7 @@ namespace verifier_NS {
     extern mpz_class sk_v;
     extern std::vector<ECP2> PK_s;
     extern std::chrono::high_resolution_clock::time_point auth_start_time;
+    extern vector<mpz_class> registeredIDs;
 
     // ============================================================
     // TA connection handlers

@@ -110,41 +110,82 @@ namespace RTS_web {
         return UAVs;
     }
 
-    parSig Sign(Params pp, UAV uav, int t, mpz_class M, vector<mpz_class> S) {
+    parSig Sign(Params pp, UAV uav, int t, mpz_class M, const std::string &bitmap,
+                const vector<mpz_class> &registeredIDs) {
+
+        // 1. Reconstruct the full signer set S locally from the bitmap
+        vector<mpz_class> S;
+        for (size_t i = 0; i < bitmap.size() * 8; ++i) {
+            int byteIdx = i / 8;
+            int bitIdx = i % 8;
+            // Check if the bit is set
+            if ((static_cast<unsigned char>(bitmap[byteIdx]) >> bitIdx) & 1) {
+                S.push_back(registeredIDs[i]);
+            }
+        }
+
+        // 2. Compute basic signature components (cj, sj)
         mpz_class cj = 1, sj = 1;
         for (int i = 0; i < t - 1; ++i) {
             cj = (cj * uav.c1[i]) % pp.q;
             sj = (sj * uav.c2[i]) % pp.q;
         }
-        mpz_class Pi_0 = getPi_0(pp, S, t,uav.ID);
+
+        // 3. Compute Lagrange coefficient for this UAV based on set S
+        mpz_class Pi_0 = getPi_0(pp, S, t, uav.ID);
+
+        // 4. Generate the signature point on the Elliptic Curve
         sj = (sj * Pi_0) % pp.q;
         ECP Hm = hashToPoint(M, pp.q);
         ECP sigma;
         ECP_copy(&sigma, &Hm);
-        ECP_mul(sigma, sj);
+        ECP_mul(sigma, sj); // sigma = Hm ^ sj
 
+        // 5. Package result
         parSig res;
-        res.ID = uav.ID;
         res.cj = cj;
         ECP_copy(&res.sig, &sigma);
+        res.index = static_cast<short>(uav.serialNumber);
 
         return res;
     }
 
 
-    vector<parSig> collectSig(Params pp, vector<UAV> UAVs, int t, mpz_class M, vector<mpz_class> S) {
+    vector<parSig> collectSig(Params pp, vector<UAV> UAVs, int t, mpz_class M, const std::string &bitmap,
+                              const vector<mpz_class> &registeredIDs) {
         vector<parSig> sigmas;
-        parSig sigma;
-        for (int i = 0; i < t; ++i) {
-            sigma = Sign(pp, UAVs[i], t, M, S);
-            sigmas.push_back(sigma);
+
+        // Iterate through all UAVs to check if they are selected
+        for (int i = 0; i < UAVs.size(); ++i) {
+            int idx = UAVs[i].serialNumber;
+            int byteIdx = idx / 8;
+            int bitIdx = idx % 8;
+            bool isSelected = false;
+
+            // Check against the bitmap
+            if (byteIdx < bitmap.size()) {
+                if ((static_cast<unsigned char>(bitmap[byteIdx]) >> bitIdx) & 1) {
+                    isSelected = true;
+                }
+            }
+
+            // If selected, generate signature and add to list
+            if (isSelected) {
+                parSig sigma = Sign(pp, UAVs[i], t, M, bitmap, registeredIDs);
+                sigmas.push_back(sigma);
+            }
         }
         return sigmas;
+    }
+
+    bool compareParSig(const parSig &a, const parSig &b) {
+        return a.index < b.index;
     }
 
     Sigma AggSig(vector<parSig> parSigs, Params pp, UAV_h uavH, mpz_class PK_v) {
         initState(state_gmp_websocket);
         Sigma sigma;
+        std::sort(parSigs.begin(), parSigs.end(), compareParSig);
         mpz_class rk = pow_mpz(PK_v, uavH.alpha, pp.q);
         mpz_class lambda_q = pp.q - 1;
         vector<mpz_class> factors = getFactors();
@@ -165,7 +206,7 @@ namespace RTS_web {
             ECP_copy(&sig_i, &parSigs[i].sig);
             ECP_mul(sig_i, beta_e);
             sigma.sig.push_back(sig_i);
-            sigma.IDs.push_back(parSigs[i].ID);
+            sigma.indices.push_back(parSigs[i].index);
         }
 
         return sigma;
@@ -213,102 +254,64 @@ namespace RTS_web {
         return Pi_0;
     }
 
-    vector<mpz_class> getPi_0(Params pp, Sigma UAVs, int t) {
-        vector<mpz_class> Pis;
-        for (int i = 0; i < t; i++) {
-            mpz_class numerator = 1;
-            mpz_class denominator = 1;
-            for (int j = 0; j < t; j++) {
-                if (j != i) {
-                    mpz_class temp_numerator = (-UAVs.IDs[j] + pp.q) % pp.q;
-                    numerator = (numerator * temp_numerator) % pp.q;
-                    mpz_class temp_denominator = (UAVs.IDs[i] - UAVs.IDs[j] + pp.q) % pp.q;
-                    denominator = (denominator * temp_denominator) % pp.q;
-                }
-            }
-            mpz_class inv_den = invert_mpz(denominator, pp.q);
-            mpz_class Pi_0 = (numerator * inv_den) % pp.q;
-            Pis.push_back(Pi_0);
-        }
-        return Pis;
-    }
+    int Verify(Sigma sigma, mpz_class sk_v, Params pp, mpz_class M,
+               const vector<mpz_class> &globalIDs,
+               const vector<ECP2> &globalPKs) {
 
-    int Verify(Sigma sigma, mpz_class sk_v, Params pp, mpz_class M, int t,vector<ECP2> PKs) {
-        vector<mpz_class> Pis = getPi_0s(pp, sigma.IDs, t);
+        int t = sigma.indices.size();
+
+        // Containers for the actual participants involved in this signature
+        vector<mpz_class> activeIDs;
+        vector<ECP2> activePKs;
+        activeIDs.reserve(t);
+        activePKs.reserve(t);
+
+        // 1. Reconstruct active participants based on indices
+        for (short idx: sigma.indices) {
+            // Safety check for bounds
+            if (idx < 0 || idx >= globalIDs.size()) {
+                cout << "[Verify] Error: Invalid index in signature." << endl;
+                return 0;
+            }
+            activeIDs.push_back(globalIDs[idx]);
+            activePKs.push_back(globalPKs[idx]);
+        }
+
+        // 2. Compute Lagrange interpolation coefficients for the active set
+        vector<mpz_class> Pis = getPi_0s(pp, activeIDs, t);
+
+        // 3. Compute unblinding factors (remove the mask applied by the aggregator)
         mpz_class temp, hash;
         temp = pow_mpz(pp.beta, sk_v, pp.q);
         hash = hashToCoprime(temp, pp.q - 1, getFactors());
         vector<mpz_class> k;
         for (int i = 0; i < t; ++i) {
             temp = pow_mpz(sigma.aux[i], hash, pp.q);
-            temp = invert_mpz(temp, pp.q);
+            temp = invert_mpz(temp, pp.q); // Invert to remove the factor
             k.push_back(temp);
         }
         ECP s;
-        ECP_inf(&s);   // s = 0
+        ECP_inf(&s);   // Initialize accumulator s = 0
         ECP Hm = hashToPoint(M, pp.q);
         FP12 left, right;
         ECP ecpLeft;
+        // 4. Unblind and Aggregate partial signatures
         for (int i = 0; i < t; ++i) {
             ECP_mul(sigma.sig[i], k[i]);
+            // Single signature verification for debugging
             left = e(sigma.sig[i], pp.P2);
             ECP_copy(&ecpLeft, &Hm);
             ECP_mul(ecpLeft, Pis[i]);
-            right = e(ecpLeft, PKs[i]);
-    //        cout << "No." << i << " partial signature pass ?: " << FP12_equals(&left, &right) << endl;
+            right = e(ecpLeft, activePKs[i]);
+            if (!FP12_equals(&left, &right)) cout << "Part " << i << " failed!" << endl;
+            // Aggregate: s = s + sigma_i
             ECP_add(&s, &sigma.sig[i]);
         }
 
+        // 5. Check if e(s, P2) == e(Hm, PK_agg)
         left = e(s, pp.P2);
-        right = e(Hm, pp.PK[t - 2]);
+        right = e(Hm, pp.PK[t - 2]); // PK[t-2] corresponds to the threshold public key
+
         return FP12_equals(&left, &right);
     }
-
-    int fussion() {
-        initState(state_gmp_websocket);
-        initRNG(&rng_websocket);
-        // init params
-        mpz_class alpha, M = 123456789;
-        int n = 6, tm = 6;
-        // setup
-        Params pp = Setup(alpha, n, tm);
-        UAV_h uavH;
-        // KeyGen
-        vector<UAV> UAVs = KeyGen(pp, alpha, uavH);
-        // collect signatures
-        int t = tm / 2 + 1;
-        vector<mpz_class> S;
-        vector<ECP2> PKs;
-        for (int i = 0; i < t; ++i) {
-            S.push_back(UAVs[i].ID);
-            PKs.push_back(UAVs[i].PK[t-2]);
-        }
-        vector<parSig> sigmas = collectSig(pp, UAVs, t, M, S);
-        // AggSig
-        mpz_class sk_v = rand_mpz(state_gmp_websocket);
-        mpz_class PK_v = pow_mpz(pp.g, sk_v, pp.q);
-
-        Sigma sig = AggSig(sigmas, pp, uavH, PK_v);
-        // Verify
-        int pass = Verify(sig, sk_v, pp, M, t,PKs);
-
-        return pass;
-    }
-
-    void test() {
-        int sum = 0;
-        for (int i = 0; i < 100; i++) {
-            if (fussion() != 1) {
-                cout << "本次验证失败 sum=" << sum++ << "  &&  i=" << i << endl;
-                sleep(1);
-            }
-        }
-        cout << "失败次数：" << sum << endl;
-    }
 }
-
-//int main() {
-//    cout << "verify RTS success ?: " << RTS_web::fussion() << endl;
-//    return 0;
-//}
-

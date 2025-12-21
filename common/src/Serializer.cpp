@@ -99,14 +99,16 @@ void showPackage(TransmissionPackage pkg) {
 
 
 
+// 序列化： cj # sig # index
 std::string parSig_to_str(const parSig &sig) {
     std::ostringstream oss;
     oss << mpz_to_str(sig.cj) << "#"
         << ECP_to_str(sig.sig) << "#"
-        << mpz_to_str(sig.ID);
+        << sig.index;
     return oss.str();
 }
 
+// 反序列化
 parSig str_to_parSig(const std::string &str) {
     parSig sig;
 
@@ -125,43 +127,60 @@ parSig str_to_parSig(const std::string &str) {
 
     sig.cj = str_to_mpz(fields[0]);
     sig.sig = str_to_ECP(fields[1]);
-    sig.ID = str_to_mpz(fields[2]);
+    try {
+        sig.index = static_cast<short>(std::stoi(fields[2]));
+    } catch (...) {
+        throw std::runtime_error("Invalid index format in parSig.");
+    }
 
     return sig;
 }
 
 
-void showParSig(parSig sig) {
-    std::cout << "===== parSig =====" << std::endl;
+void showParSig(parSig& sig) {
+    cout << "--- Partial Signature ---" << endl;
+    cout << "Index (SerialNumber): " << sig.index << endl;
 
-    std::cout << "cj: ";
+    cout << "cj: ";
     show_mpz(sig.cj.get_mpz_t());
 
-    std::cout << "sig: ";
+    cout << "sig (G1): ";
+    // 注意：这里假设你有一个输出 G1 点的函数，就像 ECP2_output 一样
+    // 如果没有，请替换为你项目中输出 ECP 类型的方法
     ECP_output(&sig.sig);
-
-    std::cout << "ID: ";
-    show_mpz(sig.ID.get_mpz_t());
-
-    std::cout << "==================" << std::endl;
+    cout << endl;
+    cout << "-------------------------" << endl;
 }
 
+// 序列化 Sigma (适配 indices)
 std::string Sigma_to_str(const Sigma &sg) {
     std::ostringstream oss;
 
-    oss << mpzArr_to_str(sg.aux) << "#"
-        << ECPArr_to_str(sg.sig) << "#"
-        << mpzArr_to_str(sg.IDs);
+    // 1. 序列化 Aux (mpz数组，保持原样)
+    oss << mpzArr_to_str(sg.aux) << "#";
+
+    // 2. 序列化 Sig (ECP数组，保持原样)
+    oss << ECPArr_to_str(sg.sig) << "#";
+
+    // 3. [修改] 序列化 indices (short数组 -> 逗号分隔字符串)
+    for (size_t i = 0; i < sg.indices.size(); ++i) {
+        oss << sg.indices[i];
+        if (i != sg.indices.size() - 1) {
+            oss << ",";
+        }
+    }
 
     return oss.str();
 }
 
+// 反序列化 Sigma (适配 indices)
 Sigma str_to_Sigma(const std::string &str) {
     Sigma sg;
 
     std::vector<std::string> fields;
     size_t start = 0, end;
 
+    // 按 '#' 分割字符串
     while ((end = str.find('#', start)) != std::string::npos) {
         fields.push_back(str.substr(start, end - start));
         start = end + 1;
@@ -172,38 +191,53 @@ Sigma str_to_Sigma(const std::string &str) {
         throw std::runtime_error("Invalid Sigma format.");
     }
 
+    // 1. 解析 Aux
     sg.aux = str_to_mpzArr(fields[0]);
+
+    // 2. 解析 Sig
     sg.sig = str_to_ECPArr(fields[1]);
-    sg.IDs = str_to_mpzArr(fields[2]);
+
+    // 3. [修改] 解析 indices (逗号分隔字符串 -> vector<short>)
+    std::string indicesStr = fields[2];
+    if (!indicesStr.empty()) {
+        std::stringstream ss(indicesStr);
+        std::string item;
+        while (std::getline(ss, item, ',')) {
+            if (!item.empty()) {
+                // string -> int -> short
+                sg.indices.push_back(static_cast<short>(std::stoi(item)));
+            }
+        }
+    }
 
     return sg;
 }
 
-void showSigma(Sigma sg) {
-    cout << "===== Sigma =====" << endl;
+void showSigma(Sigma& sigma) {
+    cout << "===== Aggregated Sigma =====" << endl;
+    // 1. 打印 Indices (这是导致你报错的关键部分)
+    cout << "Indices (" << sigma.indices.size() << " items): [ ";
+    for (size_t i = 0; i < sigma.indices.size(); ++i) {
+        cout << sigma.indices[i] << (i == sigma.indices.size() - 1 ? "" : ", ");
+    }
+    cout << " ]" << endl;
 
-    cout << "aux (" << sg.aux.size() << " items):" << endl;
-    for (size_t i = 0; i < sg.aux.size(); i++) {
+    // 2. 打印 Aux
+    cout << "Aux (" << sigma.aux.size() << " items):" << endl;
+    for (size_t i = 0; i < sigma.aux.size(); i++) {
         cout << "  aux[" << i << "]: ";
-        show_mpz(sg.aux[i].get_mpz_t());
+        show_mpz(sigma.aux[i].get_mpz_t());
     }
 
-    cout << "sig (" << sg.sig.size() << " items):" << endl;
-    for (size_t i = 0; i < sg.sig.size(); i++) {
+    // 3. 打印 Signatures
+    cout << "Signatures (" << sigma.sig.size() << " items):" << endl;
+    for (size_t i = 0; i < sigma.sig.size(); i++) {
         cout << "  sig[" << i << "]: ";
-        ECP_output(&sg.sig[i]);   // 和你 showPackage 的风格一致
+        ECP_output(&sigma.sig[i]); // 同样假设存在 ECP_output
+        cout << endl; // 换行
     }
-
-    cout << "IDs (" << sg.IDs.size() << " items):" << endl;
-    for (size_t i = 0; i < sg.IDs.size(); i++) {
-        cout << "  IDs[" << i << "]: ";
-        show_mpz(sg.IDs[i].get_mpz_t());
-    }
-
-    cout << "=================" << endl;
+    cout << "============================" << endl;
 }
-
-
 
 // ----------------------------------------------------------------------------
 
@@ -215,19 +249,47 @@ mpz_class str_to_mpz(const string &str) {
     return mpz_class(str, 16);
 }
 
+//std::string ECP_to_str(ECP ecp) {
+//    BIG x, y;// 每个坐标的长度是96个字节
+//    ECP_get(x, y, &ecp);
+//    return mpz_to_str(BIG_to_mpz(x)) + "," + mpz_to_str(BIG_to_mpz(y));
+//}
+//
+//ECP str_to_ECP(const std::string &str) {
+//    ECP ecp;
+//    int pos = str.find(",");
+//    BIG x, y;
+//    str_to_BIG(str.substr(0, pos), x);
+//    str_to_BIG(str.substr(pos + 1), y);
+//    ECP_set(&ecp, x, y);
+//    return ecp;
+//}
+
 std::string ECP_to_str(ECP ecp) {
-    BIG x, y;// 每个坐标的长度是96个字节
-    ECP_get(x, y, &ecp);
-    return mpz_to_str(BIG_to_mpz(x)) + "," + mpz_to_str(BIG_to_mpz(y));
+    char buffer[64];
+    octet O;
+    O.len = 0;
+    O.max = sizeof(buffer);
+    O.val = buffer;
+    ECP_toOctet(&O, &ecp, true);
+    std::string binaryData(O.val, O.len);
+    return binToHex(binaryData);
 }
 
 ECP str_to_ECP(const std::string &str) {
     ECP ecp;
-    int pos = str.find(",");
-    BIG x, y;
-    str_to_BIG(str.substr(0, pos), x);
-    str_to_BIG(str.substr(pos + 1), y);
-    ECP_set(&ecp, x, y);
+    std::string binaryData = hexToBin(str);
+    char buffer[64];
+    if(binaryData.size() > 64) throw std::runtime_error("ECP string too long");
+    memcpy(buffer, binaryData.data(), binaryData.size());
+    octet O;
+    O.len = (int)binaryData.size();
+    O.max = sizeof(buffer);
+    O.val = buffer;
+    if (ECP_fromOctet(&ecp, &O) != 1) {
+        std::cerr << "[Error] Failed to deserialize ECP (point not on curve)." << std::endl;
+        ECP_inf(&ecp);
+    }
     return ecp;
 }
 
@@ -361,4 +423,31 @@ vector<ECP2> str_to_ECP2Arr(const std::string &str) {
         ecp2s.emplace_back(str_to_ECP2(str.substr(start)));
     }
     return ecp2s;
+}
+
+
+static std::string binToHex(const std::string& input) {
+    static const char* const lut = "0123456789ABCDEF";
+    size_t len = input.length();
+    std::string output;
+    output.reserve(2 * len);
+    for (size_t i = 0; i < len; ++i) {
+        const unsigned char c = input[i];
+        output.push_back(lut[c >> 4]);
+        output.push_back(lut[c & 15]);
+    }
+    return output;
+}
+
+static std::string hexToBin(const std::string& input) {
+    size_t len = input.length();
+    if (len & 1) throw std::invalid_argument("Odd length");
+    std::string output;
+    output.reserve(len / 2);
+    for (size_t i = 0; i < len; i += 2) {
+        std::string byteString = input.substr(i, 2);
+        char byte = (char)strtol(byteString.c_str(), NULL, 16);
+        output.push_back(byte);
+    }
+    return output;
 }
