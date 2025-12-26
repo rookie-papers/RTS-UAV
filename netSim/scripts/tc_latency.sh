@@ -35,15 +35,13 @@ function clean_tc() {
 echo "[*] Configuring Scenario 1: High Latency [Delay: $NET_DELAY, Jitter: $NET_JITTER]..."
 
 # ================= 3. Configure UAV Members =================
-for i in $(seq 1 $NUM_UAV); do
-    NS_NAME="UAV$i"
-    DEV_NAME="veth-uav$i-ns"
-
-    clean_tc $NS_NAME $DEV_NAME
-    # Quotes are added to variable references to prevent parsing errors if parameters contain spaces
-    ip netns exec $NS_NAME tc qdisc add dev $DEV_NAME root netem delay "$NET_DELAY" "$NET_JITTER"
-done
-echo " -> Completed delay setup for $NUM_UAV normal nodes."
+# for i in $(seq 1 $NUM_UAV); do
+#    NS_NAME="UAV$i"
+#    DEV_NAME="veth-uav$i-ns"
+#    clean_tc $NS_NAME $DEV_NAME
+#    ip netns exec $NS_NAME tc qdisc add dev $DEV_NAME root netem delay "$NET_DELAY" "$NET_JITTER"
+# done
+# echo " -> Completed delay setup for $NUM_UAV normal nodes."
 
 # ================= 4. Configure Core Nodes =================
 

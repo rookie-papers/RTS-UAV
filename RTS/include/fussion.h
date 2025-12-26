@@ -153,3 +153,19 @@ mpz_class getPi_0(Params pp, vector<mpz_class> ID, int t, mpz_class myID);
  * @return Returns 1 if valid, otherwise 0
  */
 int Verify(Sigma sigma, mpz_class sk_v, Params pp, mpz_class M, int t,vector<ECP2> PKs);
+
+/**
+ * @brief Executes the swarm splitting process and updates keys for the sub-swarm
+ * @param pp System public parameters
+ * @param oldHead The cluster head of the original swarm
+ * @param subSwarm The list of UAVs forming the new sub-swarm
+ */
+void SwarmSplitting(Params &pp, UAV_h &oldHead, vector<UAV> &subSwarm);
+
+/**
+ * @brief Executes the optimized swarm splitting process with O(log tm) complexity
+ * @param pp System public parameters
+ * @param oldHead The cluster head of the original swarm
+ * @param subSwarm The list of UAVs forming the new sub-swarm
+ */
+void SwarmSplittingOptimized(Params &pp, UAV_h &oldHead, vector<UAV> &subSwarm);

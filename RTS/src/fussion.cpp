@@ -260,12 +260,113 @@ int Verify(Sigma sigma, mpz_class sk_v, Params pp, mpz_class M, int t,vector<ECP
     return FP12_equals(&left, &right);
 }
 
+void SwarmSplitting(Params &pp, UAV_h &oldHead, vector<UAV> &subSwarm) {
+
+    // Step 1: Distributing the Transformation Key (stk)
+    mpz_class phi_q = pp.q - 1;
+    mpz_class ti = rand_mpz(state_gmp);
+    ti = ti % phi_q;
+    mpz_class stk = (oldHead.alpha + ti) % phi_q;
+    mpz_class g_ti = pow_mpz(pp.g, ti, pp.q);
+
+    // Simulate ElGamal Encryption/Decryption Cost
+    mpz_class subHead_sk = rand_mpz(state_gmp);
+    mpz_class subHead_pk = pow_mpz(pp.g, subHead_sk, pp.q);
+
+    // [Encryption]: Encrypt stk and g_ti
+    mpz_class r = rand_mpz(state_gmp);
+    mpz_class C1 = pow_mpz(pp.g, r, pp.q);
+    mpz_class K = pow_mpz(subHead_pk, r, pp.q);
+    mpz_class C2_stk = (K * stk) % pp.q;
+    mpz_class C2_gti = (K * g_ti) % pp.q;
+
+    // [Decryption]: Decrypt to recover stk and g_ti
+    mpz_class S = pow_mpz(C1, subHead_sk, pp.q);
+    mpz_class S_inv = invert_mpz(S, pp.q);
+    mpz_class recovered_stk = (C2_stk * S_inv) % pp.q;
+    mpz_class recovered_g_ti = (C2_gti * S_inv) % pp.q;
+
+    // [Verification]: Verify if g^stk == beta * g^ti
+    mpz_class lhs = pow_mpz(pp.g, recovered_stk, pp.q);
+    mpz_class rhs = (pp.beta * recovered_g_ti) % pp.q;
+
+    if (lhs != rhs) {
+        cout << "Error: Transformation Key Verification Failed!" << endl;
+    }
+
+    // Step 2: Updating the Share Reconstruction Keys
+    // Iterate through all UAVs in the sub-swarm
+    int sub_swarm_size = subSwarm.size();
+    for (int j = 0; j < sub_swarm_size; ++j) {
+        // We take the minimum of (original shares) and (current sub-swarm size).
+        int num_shares = std::min((int)subSwarm[j].c1.size(), sub_swarm_size);
+        for (int i = 0; i < num_shares; ++i) {
+            // Calculate update factor: (c1_old)^ti and update component: c1_old * g^ti ; c2_old * update_factor
+            mpz_class update_factor = pow_mpz(subSwarm[j].c1[i], ti, pp.q);
+            subSwarm[j].c1[i] = (subSwarm[j].c1[i] * g_ti) % pp.q;
+            subSwarm[j].c2[i] = (subSwarm[j].c2[i] * update_factor) % pp.q;
+        }
+    }
+}
+
+void SwarmSplittingOptimized(Params &pp, UAV_h &oldHead, vector<UAV> &subSwarm) {
+
+    // Step 1: Distributing the Transformation Key (stk)
+    mpz_class phi_q = pp.q - 1;
+    mpz_class ti = rand_mpz(state_gmp);
+    ti = ti % phi_q;
+    mpz_class stk = (oldHead.alpha + ti) % phi_q;
+    mpz_class g_ti = pow_mpz(pp.g, ti, pp.q);
+
+    // Simulate ElGamal Encryption/Decryption Cost
+    mpz_class subHead_sk = rand_mpz(state_gmp);
+    mpz_class subHead_pk = pow_mpz(pp.g, subHead_sk, pp.q);
+
+    // [Encryption]: Encrypt stk and g_ti
+    mpz_class r = rand_mpz(state_gmp);
+    mpz_class C1 = pow_mpz(pp.g, r, pp.q);
+    mpz_class K = pow_mpz(subHead_pk, r, pp.q);
+    mpz_class C2_stk = (K * stk) % pp.q;
+    mpz_class C2_gti = (K * g_ti) % pp.q;
+
+    // [Decryption]: Decrypt to recover stk and g_ti
+    mpz_class S = pow_mpz(C1, subHead_sk, pp.q);
+    mpz_class S_inv = invert_mpz(S, pp.q);
+    mpz_class recovered_stk = (C2_stk * S_inv) % pp.q;
+    mpz_class recovered_g_ti = (C2_gti * S_inv) % pp.q;
+
+    // [Verification]: Verify if g^stk == beta * g^ti
+    mpz_class lhs = pow_mpz(pp.g, recovered_stk, pp.q);
+    mpz_class rhs = (pp.beta * recovered_g_ti) % pp.q;
+
+    if (lhs != rhs) {
+        cout << "Error: Optimized Verification Failed!" << endl;
+    }
+
+    // Step 2: Updating the Share Reconstruction Keys (Optimized)
+    int sub_swarm_size = subSwarm.size();
+
+    // Logic: We only need enough binary components to represent the sub-swarm size.
+    // e.g., if size is 10, log2(10) ~ 3.32 -> ceil is 4. We need components 2^0, 2^1, 2^2, 2^3.
+    int needed_log_shares = (int)ceil(log2((double)sub_swarm_size + 1));
+
+    for (int j = 0; j < sub_swarm_size; ++j) {
+        int actual_shares = std::min((int)subSwarm[j].c1.size(), needed_log_shares);
+        for (int i = 0; i < actual_shares; ++i) {
+            // Calculate update factor and update components
+            mpz_class update_factor = pow_mpz(subSwarm[j].c1[i], ti, pp.q);
+            subSwarm[j].c1[i] = (subSwarm[j].c1[i] * g_ti) % pp.q;
+            subSwarm[j].c2[i] = (subSwarm[j].c2[i] * update_factor) % pp.q;
+        }
+    }
+}
+
 int fussion() {
     initState(state_gmp);
     initRNG(&rng);
     // init params
     mpz_class alpha, M = 123456789;
-    int n = 6, tm = 6;
+    int n = 128, tm = 128;
     // setup
     Params pp = Setup(alpha, n, tm);
     UAV_h uavH;
@@ -287,6 +388,27 @@ int fussion() {
     Sigma sig = AggSig(sigmas, pp, uavH, PK_v);
     // Verify
     int pass = Verify(sig, sk_v, pp, M, t,PKs);
+
+    vector<UAV> subSwarm;
+    int subSwarmSize = n;
+    for(int i = 0; i < subSwarmSize; ++i) {
+        subSwarm.push_back(UAVs[i]);
+    }
+    auto start = std::chrono::high_resolution_clock::now();
+    SwarmSplitting(pp, uavH, subSwarm);
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double, std::milli> duration = end - start;
+
+    cout << "Swarm Splitting Cost (" << subSwarmSize << " UAVs): "
+         << duration.count() << " ms" << endl;
+
+    start = std::chrono::high_resolution_clock::now();
+    SwarmSplittingOptimized(pp, uavH, subSwarm);
+    end = std::chrono::high_resolution_clock::now();
+    duration = end - start;
+
+    cout << "Optimized Swarm Splitting Cost (" << subSwarmSize << " UAVs): "
+         << duration.count() << " ms" << endl;
 
     return pass;
 }

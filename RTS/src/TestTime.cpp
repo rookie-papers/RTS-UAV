@@ -112,6 +112,39 @@ void BM_hash(benchmark::State &state) {
     }
 }
 
+static void BM_SwarmSplitting(benchmark::State &state) {
+    initState(state_test);
+    initRNG(&rng_test);
+    mpz_class alpha;
+    Params pp = Setup(alpha, N, TM);
+    UAV_h uavH;
+    vector<UAV> UAVs = KeyGen(pp, alpha, uavH);
+    vector<UAV> subSwarm;
+    int subSwarmSize = N;
+    for (int i = 0; i < subSwarmSize; ++i) {
+        subSwarm.push_back(UAVs[i]);
+    }
+    for (auto _: state) {
+        SwarmSplitting(pp, uavH, subSwarm);
+    }
+}
+
+static void BM_SwarmSplittingOptimized(benchmark::State &state) {
+    initState(state_test);
+    initRNG(&rng_test);
+    mpz_class alpha;
+    Params pp = Setup(alpha, N, TM);
+    UAV_h uavH;
+    vector<UAV> UAVs = KeyGen(pp, alpha, uavH);
+    vector<UAV> subSwarm;
+    int subSwarmSize = N;
+    for (int i = 0; i < subSwarmSize; ++i) {
+        subSwarm.push_back(UAVs[i]);
+    }
+    for (auto _: state) {
+        SwarmSplittingOptimized(pp, uavH, subSwarm);
+    }
+}
 
 // 注册基准测试
 BENCHMARK(BM_Setup);
@@ -120,10 +153,11 @@ BENCHMARK(BM_Sign);
 BENCHMARK(BM_Tran);
 BENCHMARK(BM_Verify);
 BENCHMARK(BM_hash);
+BENCHMARK(BM_SwarmSplitting);
+BENCHMARK(BM_SwarmSplittingOptimized);
 
 
-
-// 基准测试的入口
+// benchmark main
 BENCHMARK_MAIN();
 
 

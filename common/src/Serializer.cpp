@@ -65,7 +65,7 @@ void showPackage(TransmissionPackage pkg) {
     cout << "q: ";
     show_mpz(pkg.pp.q.get_mpz_t());
     cout << "P2: ";
-    ECP2_output(&pkg.pp.P2);   // 你项目里应有类似 ECP_output 的 G2 输出函数
+    ECP2_output(&pkg.pp.P2);
     cout << "g: ";
     show_mpz(pkg.pp.g.get_mpz_t());
     cout << "beta: ";
@@ -99,7 +99,6 @@ void showPackage(TransmissionPackage pkg) {
 
 
 
-// 序列化： cj # sig # index
 std::string parSig_to_str(const parSig &sig) {
     std::ostringstream oss;
     oss << mpz_to_str(sig.cj) << "#"
@@ -108,7 +107,6 @@ std::string parSig_to_str(const parSig &sig) {
     return oss.str();
 }
 
-// 反序列化
 parSig str_to_parSig(const std::string &str) {
     parSig sig;
 
@@ -145,24 +143,16 @@ void showParSig(parSig& sig) {
     show_mpz(sig.cj.get_mpz_t());
 
     cout << "sig (G1): ";
-    // 注意：这里假设你有一个输出 G1 点的函数，就像 ECP2_output 一样
-    // 如果没有，请替换为你项目中输出 ECP 类型的方法
     ECP_output(&sig.sig);
     cout << endl;
     cout << "-------------------------" << endl;
 }
 
-// 序列化 Sigma (适配 indices)
 std::string Sigma_to_str(const Sigma &sg) {
     std::ostringstream oss;
-
-    // 1. 序列化 Aux (mpz数组，保持原样)
     oss << mpzArr_to_str(sg.aux) << "#";
-
-    // 2. 序列化 Sig (ECP数组，保持原样)
     oss << ECPArr_to_str(sg.sig) << "#";
 
-    // 3. [修改] 序列化 indices (short数组 -> 逗号分隔字符串)
     for (size_t i = 0; i < sg.indices.size(); ++i) {
         oss << sg.indices[i];
         if (i != sg.indices.size() - 1) {
@@ -173,14 +163,11 @@ std::string Sigma_to_str(const Sigma &sg) {
     return oss.str();
 }
 
-// 反序列化 Sigma (适配 indices)
 Sigma str_to_Sigma(const std::string &str) {
     Sigma sg;
-
     std::vector<std::string> fields;
     size_t start = 0, end;
 
-    // 按 '#' 分割字符串
     while ((end = str.find('#', start)) != std::string::npos) {
         fields.push_back(str.substr(start, end - start));
         start = end + 1;
@@ -191,13 +178,8 @@ Sigma str_to_Sigma(const std::string &str) {
         throw std::runtime_error("Invalid Sigma format.");
     }
 
-    // 1. 解析 Aux
     sg.aux = str_to_mpzArr(fields[0]);
-
-    // 2. 解析 Sig
     sg.sig = str_to_ECPArr(fields[1]);
-
-    // 3. [修改] 解析 indices (逗号分隔字符串 -> vector<short>)
     std::string indicesStr = fields[2];
     if (!indicesStr.empty()) {
         std::stringstream ss(indicesStr);
@@ -215,26 +197,22 @@ Sigma str_to_Sigma(const std::string &str) {
 
 void showSigma(Sigma& sigma) {
     cout << "===== Aggregated Sigma =====" << endl;
-    // 1. 打印 Indices (这是导致你报错的关键部分)
     cout << "Indices (" << sigma.indices.size() << " items): [ ";
     for (size_t i = 0; i < sigma.indices.size(); ++i) {
         cout << sigma.indices[i] << (i == sigma.indices.size() - 1 ? "" : ", ");
     }
     cout << " ]" << endl;
-
-    // 2. 打印 Aux
     cout << "Aux (" << sigma.aux.size() << " items):" << endl;
     for (size_t i = 0; i < sigma.aux.size(); i++) {
         cout << "  aux[" << i << "]: ";
         show_mpz(sigma.aux[i].get_mpz_t());
     }
 
-    // 3. 打印 Signatures
     cout << "Signatures (" << sigma.sig.size() << " items):" << endl;
     for (size_t i = 0; i < sigma.sig.size(); i++) {
         cout << "  sig[" << i << "]: ";
-        ECP_output(&sigma.sig[i]); // 同样假设存在 ECP_output
-        cout << endl; // 换行
+        ECP_output(&sigma.sig[i]);
+        cout << endl;
     }
     cout << "============================" << endl;
 }
@@ -248,22 +226,6 @@ std::string mpz_to_str(const mpz_class &value) {
 mpz_class str_to_mpz(const string &str) {
     return mpz_class(str, 16);
 }
-
-//std::string ECP_to_str(ECP ecp) {
-//    BIG x, y;// 每个坐标的长度是96个字节
-//    ECP_get(x, y, &ecp);
-//    return mpz_to_str(BIG_to_mpz(x)) + "," + mpz_to_str(BIG_to_mpz(y));
-//}
-//
-//ECP str_to_ECP(const std::string &str) {
-//    ECP ecp;
-//    int pos = str.find(",");
-//    BIG x, y;
-//    str_to_BIG(str.substr(0, pos), x);
-//    str_to_BIG(str.substr(pos + 1), y);
-//    ECP_set(&ecp, x, y);
-//    return ecp;
-//}
 
 std::string ECP_to_str(ECP ecp) {
     char buffer[64];
