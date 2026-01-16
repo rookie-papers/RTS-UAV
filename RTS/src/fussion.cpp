@@ -260,14 +260,89 @@ int Verify(Sigma sigma, mpz_class sk_v, Params pp, mpz_class M, int t,vector<ECP
     return FP12_equals(&left, &right);
 }
 
+// Helper: Generate a small random weight (approx. 64 bits) for batching
+mpz_class getSmallRandomDelta() {
+    unsigned long long r = (unsigned long long)rand() << 32 | rand();
+    return mpz_class(to_string(r));
+}
+
+int BatchVerify(Sigma sigma, mpz_class sk_v, Params pp, mpz_class M, int t, vector<ECP2> PKs) {
+    // 1. Pre-compute Lagrange coefficients and decryption keys
+    vector<mpz_class> Pis = getPi_0s(pp, sigma.IDs, t);
+
+    mpz_class temp, hash;
+    temp = pow_mpz(pp.beta, sk_v, pp.q);
+    hash = hashToCoprime(temp, pp.q - 1, getFactors());
+    vector<mpz_class> k;
+    for (int i = 0; i < t; ++i) {
+        temp = pow_mpz(sigma.aux[i], hash, pp.q);
+        temp = invert_mpz(temp, pp.q);
+        k.push_back(temp);
+    }
+
+    // 2. Initialize accumulators
+    ECP s; ECP_inf(&s);             // Standard aggregated signature
+    ECP S_batch; ECP_inf(&S_batch);    // Batch accumulator for signatures
+    ECP2 PK_batch; ECP2_inf(&PK_batch); // Batch accumulator for public keys
+    ECP Hm = hashToPoint(M, pp.q);
+
+    // 3. Main Loop: Process partial signatures
+    for (int i = 0; i < t; ++i) {
+        // 1. Compute transformed partial signature: point = k[i] * sigma[i] and Aggregate into signature 's'
+        ECP point;
+        ECP_copy(&point, &sigma.sig[i]);
+        ECP_mul(point, k[i]);
+        ECP_add(&s, &point);
+
+        // 2. Generate random weight delta to prevent cancellation attacks
+        mpz_class delta = getSmallRandomDelta();
+        // S_batch += delta * point
+        ECP temp_batch_point;
+        ECP_copy(&temp_batch_point, &point);
+        ECP_mul(temp_batch_point, delta);
+        ECP_add(&S_batch, &temp_batch_point);
+        // PK_batch += (delta * Pis[i]) * PK[i]
+        mpz_class w_R = (delta * Pis[i]) % pp.q;
+        ECP2 temp_PK;
+        ECP2_copy(&temp_PK, &PKs[i]);
+        ECP2_mul(temp_PK, w_R);
+        ECP2_add(&PK_batch, &temp_PK);
+    }
+
+    FP12 left, right;
+    int pass = 1;
+
+    // 4. Batch Verification: Check validity of all partial signatures in two pairing
+    // e(Sum(delta * sig), P2) == e(H(m), Sum(delta * lambda * PK))
+    left = e(S_batch, pp.P2);
+    right = e(Hm, PK_batch);
+    pass = pass && FP12_equals(&left, &right);
+
+    // 5. Final Verification: Check validity of the aggregated threshold signature
+    // e(s, P2) == e(H(m), GroupPK)
+    left = e(s, pp.P2);
+    right = e(Hm, pp.PK[t - 2]);
+
+    return pass && FP12_equals(&left, &right);
+}
+
 void SwarmSplitting(Params &pp, UAV_h &oldHead, vector<UAV> &subSwarm) {
 
     // Step 1: Distributing the Transformation Key (stk)
     mpz_class phi_q = pp.q - 1;
     mpz_class ti = rand_mpz(state_gmp);
     ti = ti % phi_q;
-    mpz_class stk = (oldHead.alpha + ti) % phi_q;
     mpz_class g_ti = pow_mpz(pp.g, ti, pp.q);
+
+    // Calculate Hash h = H(g^t) , For simulation, we generate a random h or hash g_ti.
+    // Here we use rand for simulation cost, ensuring it simulates H(g^t).
+    mpz_class h = rand_mpz(state_gmp);
+    h = h % phi_q;
+
+    // Calculate Schnorr-based stk = t + alpha * (h + 1)
+    mpz_class h_plus_1 = (h + 1) % phi_q;
+    mpz_class term = (oldHead.alpha * h_plus_1) % phi_q;
+    mpz_class stk = (ti + term) % phi_q;
 
     // Simulate ElGamal Encryption/Decryption Cost
     mpz_class subHead_sk = rand_mpz(state_gmp);
@@ -286,24 +361,24 @@ void SwarmSplitting(Params &pp, UAV_h &oldHead, vector<UAV> &subSwarm) {
     mpz_class recovered_stk = (C2_stk * S_inv) % pp.q;
     mpz_class recovered_g_ti = (C2_gti * S_inv) % pp.q;
 
-    // [Verification]: Verify if g^stk == beta * g^ti
+    // Verification: Verify if g^stk == g^ti * beta^(h+1)
     mpz_class lhs = pow_mpz(pp.g, recovered_stk, pp.q);
-    mpz_class rhs = (pp.beta * recovered_g_ti) % pp.q;
+
+    // RHS = g^ti * beta^(h+1)
+    mpz_class beta_pow = pow_mpz(pp.beta, h_plus_1, pp.q);
+    mpz_class rhs = (recovered_g_ti * beta_pow) % pp.q;
 
     if (lhs != rhs) {
         cout << "Error: Transformation Key Verification Failed!" << endl;
     }
 
     // Step 2: Updating the Share Reconstruction Keys
-    // Iterate through all UAVs in the sub-swarm
     int sub_swarm_size = subSwarm.size();
     for (int j = 0; j < sub_swarm_size; ++j) {
-        // We take the minimum of (original shares) and (current sub-swarm size).
         int num_shares = std::min((int)subSwarm[j].c1.size(), sub_swarm_size);
         for (int i = 0; i < num_shares; ++i) {
-            // Calculate update factor: (c1_old)^ti and update component: c1_old * g^ti ; c2_old * update_factor
-            mpz_class update_factor = pow_mpz(subSwarm[j].c1[i], ti, pp.q);
-            subSwarm[j].c1[i] = (subSwarm[j].c1[i] * g_ti) % pp.q;
+            // Calculate update factor: (c1_old)^stk ; Note: c1 is c_ij, c2 is s_ij
+            mpz_class update_factor = pow_mpz(subSwarm[j].c1[i], stk, pp.q);
             subSwarm[j].c2[i] = (subSwarm[j].c2[i] * update_factor) % pp.q;
         }
     }
@@ -315,29 +390,39 @@ void SwarmSplittingOptimized(Params &pp, UAV_h &oldHead, vector<UAV> &subSwarm) 
     mpz_class phi_q = pp.q - 1;
     mpz_class ti = rand_mpz(state_gmp);
     ti = ti % phi_q;
-    mpz_class stk = (oldHead.alpha + ti) % phi_q;
     mpz_class g_ti = pow_mpz(pp.g, ti, pp.q);
+
+    // Calculate Hash h = H(g^t)
+    mpz_class h = rand_mpz(state_gmp);
+    h = h % phi_q;
+
+    // Calculate Schnorr-based stk = t + alpha * (h + 1)
+    mpz_class h_plus_1 = (h + 1) % phi_q;
+    mpz_class term = (oldHead.alpha * h_plus_1) % phi_q;
+    mpz_class stk = (ti + term) % phi_q;
 
     // Simulate ElGamal Encryption/Decryption Cost
     mpz_class subHead_sk = rand_mpz(state_gmp);
     mpz_class subHead_pk = pow_mpz(pp.g, subHead_sk, pp.q);
 
-    // [Encryption]: Encrypt stk and g_ti
+    // [Encryption]
     mpz_class r = rand_mpz(state_gmp);
     mpz_class C1 = pow_mpz(pp.g, r, pp.q);
     mpz_class K = pow_mpz(subHead_pk, r, pp.q);
     mpz_class C2_stk = (K * stk) % pp.q;
     mpz_class C2_gti = (K * g_ti) % pp.q;
 
-    // [Decryption]: Decrypt to recover stk and g_ti
+    // [Decryption]
     mpz_class S = pow_mpz(C1, subHead_sk, pp.q);
     mpz_class S_inv = invert_mpz(S, pp.q);
     mpz_class recovered_stk = (C2_stk * S_inv) % pp.q;
     mpz_class recovered_g_ti = (C2_gti * S_inv) % pp.q;
 
-    // [Verification]: Verify if g^stk == beta * g^ti
+    // Verification: Verify if g^stk == g^ti * beta^(h+1)
     mpz_class lhs = pow_mpz(pp.g, recovered_stk, pp.q);
-    mpz_class rhs = (pp.beta * recovered_g_ti) % pp.q;
+
+    mpz_class beta_pow = pow_mpz(pp.beta, h_plus_1, pp.q);
+    mpz_class rhs = (recovered_g_ti * beta_pow) % pp.q;
 
     if (lhs != rhs) {
         cout << "Error: Optimized Verification Failed!" << endl;
@@ -345,17 +430,12 @@ void SwarmSplittingOptimized(Params &pp, UAV_h &oldHead, vector<UAV> &subSwarm) 
 
     // Step 2: Updating the Share Reconstruction Keys (Optimized)
     int sub_swarm_size = subSwarm.size();
-
-    // Logic: We only need enough binary components to represent the sub-swarm size.
-    // e.g., if size is 10, log2(10) ~ 3.32 -> ceil is 4. We need components 2^0, 2^1, 2^2, 2^3.
     int needed_log_shares = (int)ceil(log2((double)sub_swarm_size + 1));
 
     for (int j = 0; j < sub_swarm_size; ++j) {
         int actual_shares = std::min((int)subSwarm[j].c1.size(), needed_log_shares);
         for (int i = 0; i < actual_shares; ++i) {
-            // Calculate update factor and update components
-            mpz_class update_factor = pow_mpz(subSwarm[j].c1[i], ti, pp.q);
-            subSwarm[j].c1[i] = (subSwarm[j].c1[i] * g_ti) % pp.q;
+            mpz_class update_factor = pow_mpz(subSwarm[j].c1[i], stk, pp.q);
             subSwarm[j].c2[i] = (subSwarm[j].c2[i] * update_factor) % pp.q;
         }
     }
@@ -387,17 +467,25 @@ int fussion() {
 
     Sigma sig = AggSig(sigmas, pp, uavH, PK_v);
     // Verify
-    int pass = Verify(sig, sk_v, pp, M, t,PKs);
+    auto start = std::chrono::high_resolution_clock::now();
+//    int pass = Verify(sig, sk_v, pp, M, t,PKs);
+    int pass = BatchVerify(sig, sk_v, pp, M, t,PKs);
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double, std::milli> duration = end - start;
+
+    cout << "signature verify result: " << pass << endl
+         << "Verify Cost ( t = " << t << "): "
+         << duration.count() << " ms" << endl;
 
     vector<UAV> subSwarm;
     int subSwarmSize = n;
     for(int i = 0; i < subSwarmSize; ++i) {
         subSwarm.push_back(UAVs[i]);
     }
-    auto start = std::chrono::high_resolution_clock::now();
+    start = std::chrono::high_resolution_clock::now();
     SwarmSplitting(pp, uavH, subSwarm);
-    auto end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double, std::milli> duration = end - start;
+    end = std::chrono::high_resolution_clock::now();
+    duration = end - start;
 
     cout << "Swarm Splitting Cost (" << subSwarmSize << " UAVs): "
          << duration.count() << " ms" << endl;
@@ -417,16 +505,16 @@ void test() {
     int sum = 0;
     for (int i = 0; i < 100; i++) {
         if (fussion() != 1) {
-            cout << "本次验证失败 sum=" << sum++ << "  &&  i=" << i << endl;
+            cout << "This verification has failed, sum=" << sum++ << "  &&  i=" << i << endl;
             sleep(1);
         }
     }
-    cout << "失败次数：" << sum << endl;
+    cout << "feat counts：" << sum << endl;
 }
 
 
 //int main() {
-//    cout << "verify RTS success ?: " << fussion() << endl;
+//    fussion();
 //    return 0;
 //}
 

@@ -155,6 +155,20 @@ mpz_class getPi_0(Params pp, vector<mpz_class> ID, int t, mpz_class myID);
 int Verify(Sigma sigma, mpz_class sk_v, Params pp, mpz_class M, int t,vector<ECP2> PKs);
 
 /**
+ * @brief Verifies if the signature is valid using batch verification optimization
+ * @note This method uses random small exponents to aggregate partial signatures,
+ * reducing the complexity from linear pairing operations to constant pairing operations.
+ * @param sigma The signature
+ * @param sk_v Verifier’s private key
+ * @param pp System public parameters
+ * @param M Message to be signed
+ * @param t Threshold required by the verifier
+ * @param PKs Vector of the signers' public keys
+ * @return Returns 1 if valid, otherwise 0
+ */
+int BatchVerify(Sigma sigma, mpz_class sk_v, Params pp, mpz_class M, int t, vector<ECP2> PKs);
+
+/**
  * @brief Executes the swarm splitting process and updates keys for the sub-swarm
  * @param pp System public parameters
  * @param oldHead The cluster head of the original swarm
